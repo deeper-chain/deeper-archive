@@ -9,6 +9,7 @@ use anyhow::Result;
 use node_cli::service::RuntimeApi;
 use node_cli::service::Block;
 use substrate_archive::{Archive, ArchiveBuilder, SecondaryRocksDb};
+// use frame_benchmarking::benchmarking::HostFunctions;
 
 pub fn main() -> Result<()> {
 	let cli = cli_opts::CliOpts::init();

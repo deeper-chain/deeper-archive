@@ -14,7 +14,7 @@ rocksdb_secondary_path = "./substrate_archive/rocksdb_secondary"
 [runtime]
 # Specification of different methods of executing the runtime Wasm code.
 # Optional, "Interpreted" or "Compiled", default: "Interpreted"
-exec_method = "Interpreted"
+exec_method = "Compiled"
 
 # Number of threads to dedicate for executing blocks
 # Optional, default: the number of logical system threads
@@ -54,7 +54,7 @@ name = "archive.log"
 # Changing these may lead to unexpected results.
 [control]
 # Whether to index storage via re-executing historical blocks.
-# storage_indexing = true
+storage_indexing = true
 
 # Timeout to wait for a task to start execution.
 # Optional, default: 20 seconds
