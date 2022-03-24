@@ -4566,7 +4566,7 @@ dependencies = [
 [[package]]
 name = "node-cli"
 version = "2.0.0"
-source = "git+https://github.com/deeper-chain/deeper-chain?branch=feature/fit-archive#045f35f84721b85fc80250b4e17597bb4bbc284d"
+source = "git+https://github.com/deeper-chain/deeper-chain?branch=feature/fit-archive#c9ed8312499419f70ac3dd24346c4383d91abf86"
 dependencies = [
  "async-trait",
  "fc-consensus",
@@ -4654,7 +4654,7 @@ dependencies = [
 [[package]]
 name = "node-inspect"
 version = "0.8.0"
-source = "git+https://github.com/deeper-chain/deeper-chain?branch=feature/fit-archive#045f35f84721b85fc80250b4e17597bb4bbc284d"
+source = "git+https://github.com/deeper-chain/deeper-chain?branch=feature/fit-archive#c9ed8312499419f70ac3dd24346c4383d91abf86"
 dependencies = [
  "derive_more",
  "log",
@@ -4672,7 +4672,7 @@ dependencies = [
 [[package]]
 name = "node-primitives"
 version = "2.0.0"
-source = "git+https://github.com/deeper-chain/deeper-chain?branch=feature/fit-archive#045f35f84721b85fc80250b4e17597bb4bbc284d"
+source = "git+https://github.com/deeper-chain/deeper-chain?branch=feature/fit-archive#c9ed8312499419f70ac3dd24346c4383d91abf86"
 dependencies = [
  "frame-system",
  "parity-scale-codec",
@@ -4685,7 +4685,7 @@ dependencies = [
 [[package]]
 name = "node-rpc"
 version = "2.0.0"
-source = "git+https://github.com/deeper-chain/deeper-chain?branch=feature/fit-archive#045f35f84721b85fc80250b4e17597bb4bbc284d"
+source = "git+https://github.com/deeper-chain/deeper-chain?branch=feature/fit-archive#c9ed8312499419f70ac3dd24346c4383d91abf86"
 dependencies = [
  "fc-db",
  "fc-rpc",
@@ -4728,7 +4728,7 @@ dependencies = [
 [[package]]
 name = "node-runtime"
 version = "2.0.1"
-source = "git+https://github.com/deeper-chain/deeper-chain?branch=feature/fit-archive#045f35f84721b85fc80250b4e17597bb4bbc284d"
+source = "git+https://github.com/deeper-chain/deeper-chain?branch=feature/fit-archive#c9ed8312499419f70ac3dd24346c4383d91abf86"
 dependencies = [
  "fp-rpc",
  "fp-self-contained",
@@ -5165,7 +5165,7 @@ dependencies = [
 [[package]]
 name = "pallet-balances"
 version = "3.0.0"
-source = "git+https://github.com/deeper-chain/deeper-chain?branch=feature/fit-archive#045f35f84721b85fc80250b4e17597bb4bbc284d"
+source = "git+https://github.com/deeper-chain/deeper-chain?branch=feature/fit-archive#c9ed8312499419f70ac3dd24346c4383d91abf86"
 dependencies = [
  "frame-benchmarking",
  "frame-support",
@@ -5347,7 +5347,7 @@ dependencies = [
 [[package]]
 name = "pallet-credit"
 version = "3.0.0"
-source = "git+https://github.com/deeper-chain/deeper-chain?branch=feature/fit-archive#045f35f84721b85fc80250b4e17597bb4bbc284d"
+source = "git+https://github.com/deeper-chain/deeper-chain?branch=feature/fit-archive#c9ed8312499419f70ac3dd24346c4383d91abf86"
 dependencies = [
  "frame-support",
  "frame-system",
@@ -5369,7 +5369,7 @@ dependencies = [
 [[package]]
 name = "pallet-credit-accumulation"
 version = "3.0.0"
-source = "git+https://github.com/deeper-chain/deeper-chain?branch=feature/fit-archive#045f35f84721b85fc80250b4e17597bb4bbc284d"
+source = "git+https://github.com/deeper-chain/deeper-chain?branch=feature/fit-archive#c9ed8312499419f70ac3dd24346c4383d91abf86"
 dependencies = [
  "blake2-rfc",
  "frame-support",
@@ -5393,7 +5393,7 @@ dependencies = [
 [[package]]
 name = "pallet-deeper-node"
 version = "3.0.0"
-source = "git+https://github.com/deeper-chain/deeper-chain?branch=feature/fit-archive#045f35f84721b85fc80250b4e17597bb4bbc284d"
+source = "git+https://github.com/deeper-chain/deeper-chain?branch=feature/fit-archive#c9ed8312499419f70ac3dd24346c4383d91abf86"
 dependencies = [
  "frame-support",
  "frame-system",
@@ -5712,7 +5712,7 @@ dependencies = [
 [[package]]
 name = "pallet-micropayment"
 version = "3.0.0"
-source = "git+https://github.com/deeper-chain/deeper-chain?branch=feature/fit-archive#045f35f84721b85fc80250b4e17597bb4bbc284d"
+source = "git+https://github.com/deeper-chain/deeper-chain?branch=feature/fit-archive#c9ed8312499419f70ac3dd24346c4383d91abf86"
 dependencies = [
  "blake2-rfc",
  "frame-support",
@@ -5927,7 +5927,7 @@ dependencies = [
 [[package]]
 name = "pallet-staking"
 version = "3.0.0"
-source = "git+https://github.com/deeper-chain/deeper-chain?branch=feature/fit-archive#045f35f84721b85fc80250b4e17597bb4bbc284d"
+source = "git+https://github.com/deeper-chain/deeper-chain?branch=feature/fit-archive#c9ed8312499419f70ac3dd24346c4383d91abf86"
 dependencies = [
  "frame-support",
  "frame-system",
@@ -5985,7 +5985,7 @@ dependencies = [
 [[package]]
 name = "pallet-tips"
 version = "4.0.0-dev"
-source = "git+https://github.com/deeper-chain/deeper-chain?branch=feature/fit-archive#045f35f84721b85fc80250b4e17597bb4bbc284d"
+source = "git+https://github.com/deeper-chain/deeper-chain?branch=feature/fit-archive#c9ed8312499419f70ac3dd24346c4383d91abf86"
 dependencies = [
  "frame-support",
  "frame-system",

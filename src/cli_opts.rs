@@ -24,23 +24,22 @@ use substrate_archive::ArchiveConfig;
 #[derive(Clone, Debug, StructOpt)]
 #[structopt(author, about)]
 pub struct CliOpts {
-	/// Sets a custom config file
-	#[structopt(short = "c", long, name = "FILE")]
-	pub config: Option<PathBuf>,
+    /// Sets a custom config file
+    #[structopt(short = "c", long, name = "FILE", default_value = "archive.toml")]
+    pub config: PathBuf,
+
+    #[structopt(short = "s", long = "chain", name = "CHAIN", default_value = "dev")]
+    pub chain_spec: String,
 }
 
 impl CliOpts {
-	pub fn init() -> Self {
-		CliOpts::from_args()
-	}
+    pub fn init() -> Self {
+        CliOpts::from_args()
+    }
 
-	pub fn parse(&self) -> Result<Option<ArchiveConfig>> {
-		if let Some(config) = &self.config {
-			let toml_str = fs::read_to_string(config.as_path())?;
-			let config = toml::from_str::<ArchiveConfig>(toml_str.as_str())?;
-			Ok(Some(config))
-		} else {
-			Ok(None)
-		}
-	}
+    pub fn parse(&self) -> Result<Option<ArchiveConfig>> {
+        let toml_str = fs::read_to_string(self.config.as_path())?;
+        let config = toml::from_str::<ArchiveConfig>(toml_str.as_str())?;
+        Ok(Some(config))
+    }
 }

@@ -35,5 +35,5 @@ start index chain
 
 ```bash
 cargo build
-./target/debug/deeper-archive -c archive.toml
+./target/debug/deeper-archive -c archive.toml --chain local
 ```
