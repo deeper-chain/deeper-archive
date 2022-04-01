@@ -17,24 +17,22 @@
 use std::{fs, path::PathBuf};
 
 use anyhow::Result;
-use structopt::StructOpt;
-
+use clap::Parser;
 use substrate_archive::ArchiveConfig;
 
-#[derive(Clone, Debug, StructOpt)]
-#[structopt(author, about)]
+#[derive(Clone, Debug, Parser)]
 pub struct CliOpts {
     /// Sets a custom config file
-    #[structopt(short = "c", long, name = "FILE", default_value = "archive.toml")]
+    #[clap(short = 'c', long, name = "FILE", default_value = "archive.toml")]
     pub config: PathBuf,
 
-    #[structopt(short = "s", long = "chain", name = "CHAIN", default_value = "dev")]
+    #[clap(short = 's', long = "chain", name = "CHAIN", default_value = "dev")]
     pub chain_spec: String,
 }
 
 impl CliOpts {
     pub fn init() -> Self {
-        CliOpts::from_args()
+        Parser::parse()
     }
 
     pub fn parse(&self) -> Result<Option<ArchiveConfig>> {

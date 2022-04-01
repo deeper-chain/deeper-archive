@@ -1,20 +1,19 @@
 [package]
 name = "deeper-archive"
-version = "0.3.0"
-authors = ["Parity Technologies <admin@parity.io>"]
+version = "0.1.0"
+authors = ["deeper devs"]
 edition = "2021"
 rust-version = "1.56.1"
-description = "Indexes the Polkadot, Kusama and Westend Networks"
+description = "Indexes deeper-chain"
 
 [dependencies]
 anyhow = "1.0"
-clap = { version = "2.33.1", features = ["yaml", "suggestions", "color"] }
+clap = { version = "3.0", features = ["derive"] }
 ctrlc = { version = "3.1.5", features = ["termination"] }
 log = "0.4"
 serde = "1.0"
-structopt = { version = "0.3", features = ["suggestions", "color"] }
 toml = "0.5"
 
-sp-io = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.16" }
-node-cli = { git = "https://github.com/deeper-chain/deeper-chain", branch = "feature/fit-archive" }
-substrate-archive = { git = "https://github.com/deeper-chain/substrate-archive", branch = "polkadot-v0.9.16" }
+sp-io = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.17" }
+node-cli = { git = "https://github.com/deeper-chain/deeper-chain", branch = "feature/remove-shell-completion" }
+substrate-archive = { git = "https://github.com/deeper-chain/substrate-archive", branch = "polkadot-v0.9.17" }

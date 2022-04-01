@@ -1,7 +1,7 @@
 [chain]
 # Must be an absolute path to the folder where polkadot/kusama/and westend chain data is stored
 # Can also be specified via the `CHAIN_DATA_DB` environment variable
-data_path = "/tmp/alice/chains/dev/db/full"
+data_path = "/home/joey/.local/share/deeper-chain/chains/dev/db/full"
 
 # How much should the read-only database keep in cache (MB)
 # Optional, default: 128
@@ -14,7 +14,7 @@ rocksdb_secondary_path = "./substrate_archive/rocksdb_secondary"
 [runtime]
 # Specification of different methods of executing the runtime Wasm code.
 # Optional, "Interpreted" or "Compiled", default: "Interpreted"
-exec_method = "Compiled"
+exec_method = "Interpreted"
 
 # Number of threads to dedicate for executing blocks
 # Optional, default: the number of logical system threads
@@ -22,7 +22,7 @@ exec_method = "Compiled"
 # else the wasm executor will run out of memory.
 # This also increases substrate-archives memory usage.
 # Generally, you want 32 pages per block worker
-block_workers = 8
+block_workers = 1
 
 # Number of 64KB Heap Pages to allocate for WASM execution
 # Optional, default: 1024.
