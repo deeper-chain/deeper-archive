@@ -1,19 +1,5 @@
-[package]
-name = "deeper-archive"
-version = "0.1.0"
-authors = ["deeper devs"]
-edition = "2021"
-rust-version = "1.56.1"
-description = "Indexes deeper-chain"
-
-[dependencies]
-anyhow = "1.0"
-clap = { version = "3.0", features = ["derive"] }
-ctrlc = { version = "3.1.5", features = ["termination"] }
-log = "0.4"
-serde = "1.0"
-toml = "0.5"
-
-sp-io = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.17" }
-node-cli = { git = "https://github.com/deeper-chain/deeper-chain", branch = "feature/remove-shell-completion" }
-substrate-archive = { git = "https://github.com/deeper-chain/substrate-archive", branch = "polkadot-v0.9.17" }
+[workspace]
+members = [
+    "deeper-archive",
+    "deeper-decoder",
+]

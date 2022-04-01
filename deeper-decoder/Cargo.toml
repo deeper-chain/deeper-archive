@@ -1,0 +1,11 @@
+[package]
+name = "deeper-decoder"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+desub-current = { package = "desub-current", git = "https://github.com/deeper-chain/desub", branch = "polkadot-v0.9.17" }
+serde_json = { version = "1", features = ["arbitrary_precision"] }
+serde = { version = "1", features = ["derive"] }

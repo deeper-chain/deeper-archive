@@ -37,3 +37,9 @@ start index chain
 cargo build
 ./target/debug/deeper-archive -c archive.toml --chain local
 ```
+
+create decoded tables
+
+```bash
+DATABASE_URL=postgres://postgres:123@localhost:6432/deeper_local sqlx migrate add balance_decoded
+```
