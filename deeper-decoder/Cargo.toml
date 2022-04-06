@@ -10,4 +10,6 @@ sp-core = { git = "https://github.com/paritytech/substrate", branch = "polkadot-
 serde_json = { version = "1", features = ["arbitrary_precision"] }
 serde = { version = "1", features = ["derive"] }
 async-std = { version = "1.9", features = ["attributes"] }
-sqlx = { version = "0.5", features = ["runtime-async-std-rustls", "postgres", "time"] }
+sqlx = { version = "0.5", features = ["runtime-async-std-rustls", "postgres", "time", "decimal"] }
+codec = { version = "2", package = "parity-scale-codec", features = ["bit-vec"] }
+hex = "0.4"

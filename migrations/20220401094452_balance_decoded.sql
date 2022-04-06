@@ -5,7 +5,11 @@ drop table if exists block_timestamp;
 CREATE TABLE IF NOT EXISTS block_balance (
   id bigserial NOT NULL,
   block_num integer NOT NULL,
-  balance numeric(18) not null,
+  nonce integer not null,
+  free numeric(30, 0) not null,
+  reserved numeric(30, 0) not null,
+  misc_frozen numeric(30, 0) not null,
+  fee_frozen numeric(30, 0) not null,
   address varchar(48) not null
 );
 
