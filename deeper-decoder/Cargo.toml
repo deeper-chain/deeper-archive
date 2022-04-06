@@ -5,7 +5,9 @@ edition = "2021"
 
 [dependencies]
 desub-current = { git = "https://github.com/deeper-chain/desub", branch = "polkadot-v0.9.17" }
+sp-runtime = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.17" }
+sp-core = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.17" }
 serde_json = { version = "1", features = ["arbitrary_precision"] }
 serde = { version = "1", features = ["derive"] }
 async-std = { version = "1.9", features = ["attributes"] }
-sqlx = { version = "0.5", features = ["runtime-async-std-native-tls", "postgres", "time"] }
+sqlx = { version = "0.5", features = ["runtime-async-std-rustls", "postgres", "time"] }
