@@ -8,9 +8,11 @@ use sp_core::ByteArray;
 use sp_runtime::MultiAddress;
 use sqlx::postgres::{PgPoolOptions, Postgres};
 use sqlx::types::time::OffsetDateTime;
-use sqlx::Pool;
+use sqlx::{Pool, Row};
 use std::collections::HashSet;
 use std::{error::Error, fmt};
+
+mod extrinsics_decoder;
 
 static V14_METADATA_DEEPER_SCALE: &[u8] = include_bytes!("../data/v14_metadata_deeper.scale");
 
@@ -36,15 +38,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .connect("postgres://postgres:123@localhost:6432/deeper_local")
         .await?;
 
-    // decode_timestamp(&pool).await?;
+    let start_block = get_last_synced_block(&pool).await?;
+    // decode_timestamp(&pool, start_block).await?;
 
-    decode_balance(&pool).await?;
+    decode_balance(&pool, start_block).await?;
 
     Ok(())
 }
 
-async fn decode_timestamp(pool: &Pool<Postgres>) -> Result<(), Box<dyn std::error::Error>> {
-    let rows: Vec<(i32, String)> = sqlx::query_as("select number, extrinsics::text from extrinsics where not exists (select block_num from block_timestamp where block_timestamp.block_num = extrinsics.number) order by number asc limit $1;")
+async fn get_last_synced_block(pool: &Pool<Postgres>) -> Result<i32, Box<dyn std::error::Error>> {
+    let row = sqlx::query("select block_num from block_timestamp order by id desc limit 1;")
+        .fetch_one(pool)
+        .await?;
+
+    let block_num = row.try_get("block_num")?;
+
+    Ok(block_num)
+}
+
+async fn decode_timestamp(
+    pool: &Pool<Postgres>,
+    start_block: i32,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let rows: Vec<(i32, String)> = sqlx::query_as("select number, extrinsics::text from extrinsics where number > $1 order by number asc limit $2;")
+    .bind(start_block)
     .bind(10_i32)
     .fetch_all(pool)
     .await?;
@@ -79,12 +96,15 @@ async fn decode_timestamp(pool: &Pool<Postgres>) -> Result<(), Box<dyn std::erro
     Ok(())
 }
 
-// TODO: set a starting block
-async fn decode_balance(pool: &Pool<Postgres>) -> Result<(), Box<dyn std::error::Error>> {
+async fn decode_balance(
+    pool: &Pool<Postgres>,
+    start_block: i32,
+) -> Result<(), Box<dyn std::error::Error>> {
     let meta = deeper_metadata();
     let storage = decoder::decode_storage(&meta);
-    let rows: Vec<(i32, String)> = sqlx::query_as("select number, extrinsics::text from extrinsics where not exists (select block_num from block_balance where block_balance.block_num = extrinsics.number) order by number asc limit $1;")
-    .bind(100_i32)
+    let rows: Vec<(i32, String)> = sqlx::query_as("select number, extrinsics::text from extrinsics where number > $1 order by number asc limit $2;")
+    .bind(start_block)
+    .bind(10_i32)
     .fetch_all(pool)
     .await?;
 
@@ -280,4 +300,30 @@ fn decode_account_id(dest_value: Value) -> Result<AccountId32, Box<dyn std::erro
         }
         _ => Err(Box::new(DecodeAccountIdFailed)),
     }
+}
+
+async fn decode_credit(
+    pool: &Pool<Postgres>,
+    start_block: i32,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let rows: Vec<(i32, String)> = sqlx::query_as("select number, extrinsics::text from extrinsics where number > $1 order by number asc limit $2;")
+    .bind(start_block)
+    .bind(10_i32)
+    .fetch_all(pool)
+    .await?;
+
+    // for row in &rows {
+    //     let extrinsics: Vec<CurrentExtrinsic> = serde_json::from_str(&row.1)?;
+    //     for extrinsic in &extrinsics {
+    //         if extrinsic.current.call_data.pallet_name == "Credit"
+    //             && extrinsic.current.call_data.ty.name() == "add_or_update_credit_data"
+    //         {
+    //             let dest_account_id =
+    //                 decode_account_id(extrinsic.current.call_data.arguments[0].clone())?;
+    //             sign_addrs.insert(dest_account_id);
+    //         }
+    //     }
+    // }
+
+    Ok(())
 }
