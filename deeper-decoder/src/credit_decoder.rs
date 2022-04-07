@@ -1,12 +1,13 @@
-use desub_current::value::{self, Composite, Primitive, Value};
+use desub_current::value::{self, Composite, Value};
 use sp_core::crypto::AccountId32;
-use sp_core::ByteArray;
+use std::collections::HashSet;
 
-pub fn decode_extrinsics_credit(ext: &str) -> Vec<AccountId32> {
+pub fn get_credit_changed_account_ids(ext: &str) -> HashSet<AccountId32> {
     let extrinsics: Vec<crate::CurrentExtrinsic> = serde_json::from_str(ext).unwrap();
 
-    let mut account_ids: Vec<AccountId32> = vec![];
+    let mut account_ids: HashSet<AccountId32> = HashSet::new();
     for extrinsic in &extrinsics {
+        // TODO: check sudo
         for argument in extrinsic.current.call_data.arguments.clone() {
             match argument {
                 Value::Composite(Composite::Named(cn)) => {
@@ -30,27 +31,12 @@ pub fn decode_extrinsics_credit(ext: &str) -> Vec<AccountId32> {
                                                             Value::Composite(
                                                                 Composite::Unnamed(cn5),
                                                             ) => {
-                                                                let mut account_id: Vec<u8> =
-                                                                    vec![];
-                                                                for c in &cn5 {
-                                                                    match c {
-                                                                        Value::Primitive(
-                                                                            Primitive::U64(c64),
-                                                                        ) => {
-                                                                            account_id
-                                                                                .push(*c64 as u8);
-                                                                        }
-                                                                        _ => {
-                                                                            println!("c {:?}", c);
-                                                                        }
-                                                                    }
+                                                                match crate::common::decode_account_id(cn5) {
+                                                                  Ok(account) => {
+                                                                    account_ids.insert(account);
+                                                                  },
+                                                                  _ => {}, // ignore error
                                                                 }
-                                                                let account =
-                                                                    AccountId32::from_slice(
-                                                                        &account_id,
-                                                                    )
-                                                                    .unwrap();
-                                                                account_ids.push(account);
                                                             }
                                                             _ => {}
                                                         },
@@ -75,6 +61,8 @@ pub fn decode_extrinsics_credit(ext: &str) -> Vec<AccountId32> {
     account_ids
 }
 
+
+
 #[cfg(test)]
 mod tests {
     use sp_core::crypto::Ss58Codec;
@@ -82,7 +70,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test1() {
+    fn test_sudo_add_credit() {
         let s = r##"[
   {
     "Current": {
@@ -306,12 +294,12 @@ mod tests {
     }
   }
 ]"##;
-        let account_ids = decode_extrinsics_credit(s);
+        let account_ids = get_credit_changed_account_ids(s);
         let exp = sp_core::crypto::AccountId32::from_ss58check(
             "5FshJD1E8MuZw4U2sUWLQHeKuDmkQ85MZacBA36PEJj77xAZ",
         )
         .unwrap();
 
-        assert_eq!(account_ids[0], exp);
+        assert!(account_ids.contains(&exp));
     }
 }

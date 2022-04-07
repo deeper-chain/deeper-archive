@@ -17,7 +17,6 @@ CREATE TABLE IF NOT EXISTS block_credit (
   id bigserial NOT NULL,
   block_num integer NOT NULL,
   credit integer not null,
-  credit_rank varchar(10) not null,
   address varchar(48) not null
 );
 

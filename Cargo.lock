@@ -9404,6 +9404,7 @@ dependencies = [
  "atoi",
  "base64 0.13.0",
  "bitflags",
+ "bstr",
  "byteorder",
  "bytes 1.1.0",
  "chrono",
