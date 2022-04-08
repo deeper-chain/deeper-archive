@@ -43,3 +43,22 @@ create decoded tables
 ```bash
 DATABASE_URL=postgres://postgres:123@localhost:6432/deeper_local sqlx migrate add balance_decoded
 ```
+
+how to get metadata for test
+
+```bash
+subxt metadata -f bytes > metadata.scale
+```
+
+## architecture
+
+### deeper-archive
+
+read from rocksdb and write block info, extrinsic info into postgres
+
+### deeper-decoder
+
+for custom storage, because we don't know the key, so first step we need to know all storage keys in the block.
+after that we can decode the correspond storage value.
+
+for events, the storage key is fixed, so the only thing is to decode the value.

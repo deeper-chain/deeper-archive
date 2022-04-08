@@ -9,9 +9,32 @@ pub fn decode_account_id(un: Vec<Value>) -> Result<AccountId32, Box<dyn std::err
     let mut account_id: Vec<u8> = vec![];
     for c in &un {
         match c {
-            Value::Primitive(Primitive::U64(c64)) => {
-                account_id.push(*c64 as u8);
+            Value::Primitive(Primitive::U64(inner)) => {
+                account_id.push(*inner as u8);
             }
+            Value::Primitive(Primitive::U32(inner)) => {
+                account_id.push(*inner as u8);
+            }
+            Value::Primitive(Primitive::U16(inner)) => {
+                account_id.push(*inner as u8);
+            }
+            Value::Primitive(Primitive::U8(inner)) => {
+                account_id.push(*inner as u8);
+            }
+
+            Value::Primitive(Primitive::I64(inner)) => {
+                account_id.push(*inner as u8);
+            }
+            Value::Primitive(Primitive::I32(inner)) => {
+                account_id.push(*inner as u8);
+            }
+            Value::Primitive(Primitive::I16(inner)) => {
+                account_id.push(*inner as u8);
+            }
+            Value::Primitive(Primitive::I8(inner)) => {
+                account_id.push(*inner as u8);
+            }
+
             _ => {
                 continue;
             }
@@ -41,6 +64,13 @@ pub fn user_credit_key(account_id: AccountId32) -> Vec<u8> {
     let addr_encode = account_id.encode();
     key.extend(sp_core::blake2_128(&addr_encode));
     key.extend(&addr_encode); // blake2_128_concat
+
+    key
+}
+
+pub fn event_key() -> Vec<u8> {
+    let mut key = sp_core::twox_128("System".as_bytes()).to_vec();
+    key.extend(sp_core::twox_128("Events".as_bytes()).iter());
 
     key
 }
@@ -100,5 +130,15 @@ mod tests {
             }
             _ => assert!(false),
         }
+    }
+
+    #[test]
+    fn test_event_key() {
+        let key = event_key();
+
+        assert_eq!(
+            "26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7",
+            hex::encode(key)
+        );
     }
 }

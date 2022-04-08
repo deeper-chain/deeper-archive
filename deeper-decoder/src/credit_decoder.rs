@@ -61,8 +61,6 @@ pub fn get_credit_changed_account_ids(ext: &str) -> HashSet<AccountId32> {
     account_ids
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use sp_core::crypto::Ss58Codec;

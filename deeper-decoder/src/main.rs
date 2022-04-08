@@ -12,6 +12,7 @@ use std::{error::Error, fmt};
 mod balance_decoder;
 mod common;
 mod credit_decoder;
+mod event_decoder;
 
 static V14_METADATA_DEEPER_SCALE: &[u8] = include_bytes!("../data/v14_metadata_deeper.scale");
 
