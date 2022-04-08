@@ -62,3 +62,9 @@ for custom storage, because we don't know the key, so first step we need to know
 after that we can decode the correspond storage value.
 
 for events, the storage key is fixed, so the only thing is to decode the value.
+
+query event
+
+```SQL
+select * from block_event where info->'CreditDataAdded'->>0 = '5FshJD1E8MuZw4U2sUWLQHeKuDmkQ85MZacBA36PEJj77xAZ';
+```

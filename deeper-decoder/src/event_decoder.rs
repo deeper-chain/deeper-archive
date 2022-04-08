@@ -1,18 +1,19 @@
 use desub_current::value::{self, Composite, Value};
 use desub_current::Metadata;
+use serde::{Deserialize, Serialize};
 use sp_core::crypto::AccountId32;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
 pub enum EventInfo {
     CreditDataAdded(AccountId32, CreditData),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
 pub struct CreditData {
     pub credit: u64,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
 pub struct EventRecord {
     pub pallet: String,
     pub name: String,
@@ -29,15 +30,11 @@ pub fn decode_event(storage_key: &str, storage_val: &str, meta: Metadata) -> Vec
                 match event {
                     Value::Composite(Composite::Named(ev1)) => {
                         if ev1.len() == 3 {
-                            // println!("ev1 {:?}, {}", ev1, ev1.len());
-                            // let ev2 = ev1[1];
                             match ev1[1].1.clone() {
                                 Value::Variant(ev2) => {
-                                    // println!("ev2, name: {}, var: {:?}", ev2.name, ev2.values);
                                     let pallet_name = ev2.name.clone();
                                     match ev2.values {
                                         Composite::Unnamed(ev3) => {
-                                            // println!("ev3 {:?}, {}", ev3, ev3.len());
                                             if ev3.len() == 1 {
                                                 match ev3[0].clone() {
                                                     Value::Variant(ev4) => {
@@ -156,5 +153,22 @@ mod tests {
                 ),
             }
         );
+
+        let event: EventRecord = serde_json::from_str(
+            r##"{
+            "pallet": "Credit",
+            "name": "CreditDataAdded",
+            "info": {
+                "CreditDataAdded": [
+                    "5FshJD1E8MuZw4U2sUWLQHeKuDmkQ85MZacBA36PEJj77xAZ",
+                    {
+                        "credit": 100
+                    }
+                ]
+            }
+        }"##,
+        )
+        .unwrap();
+        assert_eq!(records[0], event);
     }
 }

@@ -6,6 +6,7 @@ use sp_core::crypto::Ss58Codec;
 use sqlx::postgres::{PgPoolOptions, Postgres};
 use sqlx::types::bstr;
 use sqlx::types::time::OffsetDateTime;
+use sqlx::types::Json;
 use sqlx::{Pool, Row};
 use std::{error::Error, fmt};
 
@@ -42,6 +43,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     decode_timestamp(&pool, start_block).await?;
     decode_balance(&pool, start_block).await?;
     decode_credit(&pool, start_block).await?;
+    decode_event(&pool, start_block).await?;
 
     Ok(())
 }
@@ -232,6 +234,58 @@ async fn decode_credit(
             }
         }
     }
+
+    Ok(())
+}
+
+async fn decode_event(
+    pool: &Pool<Postgres>,
+    start_block: i32,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let event_key = hex::encode(crate::common::event_key());
+    // this sql won't return null because every block have events
+    let rows: Vec<(i32, String, String)> = sqlx::query_as("select block_num, encode(key, 'hex') as key_hex, encode(storage, 'hex') as storage_hex from storage where block_num > $1 and encode(key, 'hex') = $2 order by block_num asc limit $3;")
+    .bind(start_block)
+    .bind(event_key)
+    .bind(BATCH_SIZE)
+    .fetch_all(pool)
+    .await?;
+
+    let mut values: Vec<(i32, String, String, event_decoder::EventInfo)> = vec![];
+    for row in &rows {
+        let events = event_decoder::decode_event(&row.1, &row.2, deeper_metadata());
+        for event in &events {
+            values.push((
+                row.0,
+                event.pallet.clone(),
+                event.name.clone(),
+                event.info.clone(),
+            ));
+        }
+    }
+
+    // insert many rows
+    // https://github.com/launchbadge/sqlx/issues/294#issuecomment-830409187
+    let mut block_nums: Vec<i32> = vec![];
+    let mut pallet_names: Vec<String> = vec![];
+    let mut event_names: Vec<String> = vec![];
+    let mut infos: Vec<Json<event_decoder::EventInfo>> = vec![];
+    values.into_iter().for_each(|value| {
+        block_nums.push(value.0);
+        pallet_names.push(value.1);
+        event_names.push(value.2);
+        infos.push(Json(value.3));
+    });
+    sqlx::query(
+        r#"INSERT INTO block_event (block_num, pallet_name, event_name, info)
+        SELECT * FROM UNNEST($1, $2, $3, $4);"#,
+    )
+    .bind(&block_nums)
+    .bind(&pallet_names)
+    .bind(&event_names)
+    .bind(&infos)
+    .execute(pool)
+    .await?;
 
     Ok(())
 }

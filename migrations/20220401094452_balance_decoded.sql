@@ -25,3 +25,11 @@ CREATE TABLE IF NOT EXISTS block_timestamp (
   block_num integer NOT NULL,
   block_time timestamp with time zone
 );
+
+CREATE TABLE IF NOT EXISTS block_event (
+  id bigserial NOT NULL,
+  block_num integer NOT NULL,
+  pallet_name varchar(40) not null,
+  event_name varchar(40) not null,
+  info jsonb
+);
