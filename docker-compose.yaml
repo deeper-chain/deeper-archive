@@ -1,47 +1,51 @@
-version: '3'
-
-
-# Dockerfile for development purposes
-# Includes dashboard for RabbitMq and Postgres, which may not be 
-# wanted in a production environment
+version: '3.6'
 
 services:
-  substrate-archive-mq:
+  deeper-archive-mq:
     image: 'rabbitmq:3-management' # RabbitMQ with included management dashboard
-    networks:
-      default: 
-        ipv4_address: 172.10.10.2 # 0 and 1 are reserved for docker
     ports:
       - 5672:5672 # localhost:container_port ; don't change container port
       - 15672:15672
     
-  substrate-archive-pg:
-    image: 'postgres:latest'
+  deeper-archive-pg:
+    image: 'postgres:12'
     ports:
       - 6432:5432 # localhost_port:container_port ; don't change container_port
+    volumes:
+      - db_data:/var/lib/postgresql/data
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: 123 # change me
       POSTGRES_DB: deeper_local # default db name
-    networks:
-      default:
-        ipv4_address: 172.10.10.3
   pgadmin:
-    image: dpage/pgadmin4
+    image: 'dpage/pgadmin4:6.8'
     environment:
       PGADMIN_DEFAULT_EMAIL: "pgadmin4@pgadmin.org"
       PGADMIN_DEFAULT_PASSWORD: "admin"
-    networks:
-        default:
-          ipv4_address: 172.10.10.4
     ports:
       - 16543:80
     restart: unless-stopped
     depends_on:
-      - substrate-archive-pg
+      - deeper-archive-pg
+
+  graphql-engine:
+    image: hasura/graphql-engine:v2.2.0
+    ports:
+      - "8080:8080"
+    depends_on:
+      - deeper-archive-pg
+    environment:
+      ## postgres database to store Hasura metadata
+      HASURA_GRAPHQL_METADATA_DATABASE_URL: postgres://postgres:123@172.17.0.1:6432/deeper_local
+      ## this env var can be used to add the above postgres database to Hasura as a data source. this can be removed/updated based on your needs
+      PG_DATABASE_URL: postgres://postgres:123@172.17.0.1:6432/deeper_local
+      ## enable the console served by server
+      HASURA_GRAPHQL_ENABLE_CONSOLE: "true" # set to "false" to disable console
+      ## enable debugging mode. It is recommended to disable this in production
+      HASURA_GRAPHQL_DEV_MODE: "true"
+      HASURA_GRAPHQL_ENABLED_LOG_TYPES: startup, http-log, webhook-log, websocket-log, query-log
+      ## uncomment next line to set an admin secret
+      # HASURA_GRAPHQL_ADMIN_SECRET: myadminsecretkey
     
-networks:
-  default:
-    ipam:
-      config:
-        - subnet: 172.10.10.0/24
+volumes:
+  db_data:

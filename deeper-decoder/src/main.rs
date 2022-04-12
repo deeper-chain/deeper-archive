@@ -40,10 +40,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start_block = get_last_synced_block(&pool).await?;
 
     // TODO: consider using join
-    decode_timestamp(&pool, start_block).await?;
     decode_balance(&pool, start_block).await?;
     decode_credit(&pool, start_block).await?;
     decode_event(&pool, start_block).await?;
+    decode_timestamp(&pool, start_block).await?; // make sure all the other storages were inserted successfully
 
     Ok(())
 }
