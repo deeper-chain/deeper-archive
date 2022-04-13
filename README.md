@@ -63,8 +63,20 @@ after that we can decode the correspond storage value.
 
 for events, the storage key is fixed, so the only thing is to decode the value.
 
-query event
+## useful queries
+
+### query events
+
+query events by pallet name and event name
 
 ```SQL
-select * from block_event where info->'CreditDataAdded'->>0 = '5FshJD1E8MuZw4U2sUWLQHeKuDmkQ85MZacBA36PEJj77xAZ';
+select * from block_event where info->'event'->>'name'='Credit' and info->'event'->'values'->0->>'name' = 'CreditDataUpdated' limit 10;
 ```
+
+query events by account id
+
+```SQL
+select * from block_event where info->'event'->>'name'='Credit' and info->'event'->'values'->0->'values'->0 = '[[168, 139, 89, 175, 231, 63, 14, 118, 158, 79, 157, 133, 205, 64, 253, 19, 240, 135, 68, 70, 242, 45, 42, 182, 120, 15, 156, 184, 144, 89, 48, 126]]' limit 1;
+```
+
+the account id is a 32 bytes big number, but its scale expression is a Vector of Value, so a little tricky to query by account id.currently I didn't find any simple ways to convert `[u8; 32]` into hex string or ss58 format.

@@ -251,15 +251,13 @@ async fn decode_event(
     .fetch_all(pool)
     .await?;
 
-    let mut values: Vec<(i32, String, String, event_decoder::EventInfo)> = vec![];
+    let mut values: Vec<(i32, Value)> = vec![];
     for row in &rows {
         let events = event_decoder::decode_event(&row.1, &row.2, deeper_metadata());
         for event in &events {
             values.push((
                 row.0,
-                event.pallet.clone(),
-                event.name.clone(),
-                event.info.clone(),
+                event.to_owned(),
             ));
         }
     }
@@ -267,22 +265,16 @@ async fn decode_event(
     // insert many rows
     // https://github.com/launchbadge/sqlx/issues/294#issuecomment-830409187
     let mut block_nums: Vec<i32> = vec![];
-    let mut pallet_names: Vec<String> = vec![];
-    let mut event_names: Vec<String> = vec![];
-    let mut infos: Vec<Json<event_decoder::EventInfo>> = vec![];
+    let mut infos: Vec<Json<Value>> = vec![];
     values.into_iter().for_each(|value| {
         block_nums.push(value.0);
-        pallet_names.push(value.1);
-        event_names.push(value.2);
-        infos.push(Json(value.3));
+        infos.push(Json(value.1));
     });
     sqlx::query(
-        r#"INSERT INTO block_event (block_num, pallet_name, event_name, info)
-        SELECT * FROM UNNEST($1, $2, $3, $4);"#,
+        r#"INSERT INTO block_event (block_num, info)
+        SELECT * FROM UNNEST($1, $2);"#,
     )
     .bind(&block_nums)
-    .bind(&pallet_names)
-    .bind(&event_names)
     .bind(&infos)
     .execute(pool)
     .await?;
