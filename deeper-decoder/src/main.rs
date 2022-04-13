@@ -2,6 +2,7 @@ use desub_current::decoder::Extrinsic;
 use desub_current::value::{self, Composite, Primitive, Value};
 use desub_current::Metadata;
 use serde::{Deserialize, Serialize};
+use sp_core::crypto::AccountId32;
 use sp_core::crypto::Ss58Codec;
 use sqlx::postgres::{PgPoolOptions, Postgres};
 use sqlx::types::bstr;
@@ -13,6 +14,7 @@ use std::{error::Error, fmt};
 mod balance_decoder;
 mod common;
 mod credit_decoder;
+mod delegation_decoder;
 mod event_decoder;
 
 static V14_METADATA_DEEPER_SCALE: &[u8] = include_bytes!("../data/v14_metadata_deeper.scale");
@@ -43,6 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     decode_balance(&pool, start_block).await?;
     decode_credit(&pool, start_block).await?;
     decode_event(&pool, start_block).await?;
+    decode_delegation(&pool, start_block).await?;
     decode_timestamp(&pool, start_block).await?; // make sure all the other storages were inserted successfully
 
     Ok(())
@@ -255,10 +258,7 @@ async fn decode_event(
     for row in &rows {
         let events = event_decoder::decode_event(&row.1, &row.2, deeper_metadata());
         for event in &events {
-            values.push((
-                row.0,
-                event.to_owned(),
-            ));
+            values.push((row.0, event.to_owned()));
         }
     }
 
@@ -278,6 +278,63 @@ async fn decode_event(
     .bind(&infos)
     .execute(pool)
     .await?;
+
+    Ok(())
+}
+
+async fn decode_delegation(
+    pool: &Pool<Postgres>,
+    start_block: i32,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let rows: Vec<(i32, String)> = sqlx::query_as("select number, extrinsics::text from extrinsics where number > $1 order by number asc limit $2;")
+    .bind(start_block)
+    .bind(BATCH_SIZE)
+    .fetch_all(pool)
+    .await?;
+
+    for row in &rows {
+        let sign_addrs = crate::delegation_decoder::get_delegation_changed_account_ids(&row.1);
+        for addr in sign_addrs {
+            let key = crate::common::staking_delegators_key(addr.clone());
+            let storage_result = sqlx::query("select block_num, encode(storage, 'hex') as storage_hex, encode(key, 'hex') as key_hex from storage where key=$1;")
+                .bind(bstr::BString::from(key.clone()))
+                .fetch_one(pool)
+                .await;
+
+            match storage_result {
+                Ok(storage_row) => {
+                    let storage_key: String = storage_row.try_get("key_hex")?;
+                    let storage_str: String = storage_row.try_get("storage_hex")?;
+
+                    let validators = delegation_decoder::get_validators(
+                        &storage_key,
+                        &storage_str,
+                        deeper_metadata(),
+                    );
+
+                    sqlx::query(
+                        "insert into block_delegation(block_num, delegator, validators) values ($1, $2, $3)",
+                    )
+                    .bind(row.0)
+                    .bind(addr.to_ss58check())
+                    .bind(Json(validators))
+                    .execute(pool)
+                    .await?;
+                }
+                _ => {
+                    let delegators: Vec<AccountId32> = vec![];
+                    sqlx::query(
+                        "insert into block_delegation(block_num, delegator, validators) values ($1, $2, $3)",
+                    )
+                    .bind(row.0)
+                    .bind(addr.to_ss58check())
+                    .bind(Json(delegators))
+                    .execute(pool)
+                    .await?;
+                }
+            }
+        }
+    }
 
     Ok(())
 }

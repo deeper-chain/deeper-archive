@@ -32,3 +32,10 @@ CREATE TABLE IF NOT EXISTS block_event (
   block_num integer NOT NULL,
   info jsonb
 );
+
+CREATE TABLE IF NOT EXISTS block_delegation (
+  id bigserial NOT NULL,
+  block_num integer NOT NULL,
+  delegator varchar(48) not null,
+  validators jsonb
+);

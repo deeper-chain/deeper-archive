@@ -58,6 +58,16 @@ pub fn system_account_key(account_id: AccountId32) -> Vec<u8> {
     key
 }
 
+pub fn staking_delegators_key(account_id: AccountId32) -> Vec<u8> {
+    let mut key = sp_core::twox_128("Staking".as_bytes()).to_vec();
+    key.extend(sp_core::twox_128("Delegators".as_bytes()).iter());
+    let addr_encode = account_id.encode();
+    key.extend(sp_core::blake2_128(&addr_encode));
+    key.extend(&addr_encode); // blake2_128_concat
+
+    key
+}
+
 pub fn user_credit_key(account_id: AccountId32) -> Vec<u8> {
     let mut key = sp_core::twox_128("Credit".as_bytes()).to_vec();
     key.extend(sp_core::twox_128("UserCredit".as_bytes()).iter());
@@ -130,6 +140,16 @@ mod tests {
             }
             _ => assert!(false),
         }
+    }
+
+    #[test]
+    fn test_staking_delegation_key() {
+        let test_addr =
+            AccountId32::from_ss58check("5FshJD1E8MuZw4U2sUWLQHeKuDmkQ85MZacBA36PEJj77xAZ")
+                .unwrap();
+        let key = staking_delegators_key(test_addr);
+
+        assert_eq!(hex::encode(key), "26aa394eea5630e07c48ae0c9558cef7b99d880ec681799c0cf30e8886371da93594ef778a4003043f6d977057644d65a88b59afe73f0e769e4f9d85cd40fd13f0874446f22d2ab6780f9cb89059307e");
     }
 
     #[test]
