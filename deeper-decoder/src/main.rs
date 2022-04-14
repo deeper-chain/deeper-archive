@@ -2,10 +2,8 @@ use desub_current::decoder::Extrinsic;
 use desub_current::value::{self, Composite, Primitive, Value};
 use desub_current::Metadata;
 use serde::{Deserialize, Serialize};
-use sp_core::crypto::AccountId32;
 use sp_core::crypto::Ss58Codec;
 use sqlx::postgres::{PgPoolOptions, Postgres};
-use sqlx::types::bstr;
 use sqlx::types::time::OffsetDateTime;
 use sqlx::types::Decimal;
 use sqlx::types::Json;
@@ -42,12 +40,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let start_block = get_last_synced_block(&pool).await?;
     let to_decode_blocks = get_to_decode_blocks(&pool, start_block).await;
+    let storage_rows = get_block_storage_rows(&pool, &to_decode_blocks).await;
 
     // TODO: consider using join
-    decode_balance(&pool, &to_decode_blocks).await?;
-    decode_credit(&pool, &to_decode_blocks).await?;
-    decode_event(&pool, &to_decode_blocks).await?;
-    decode_delegation(&pool, &to_decode_blocks).await?;
+    decode_balance(&pool, &to_decode_blocks, &storage_rows).await?;
+    decode_credit(&pool, &to_decode_blocks, &storage_rows).await?;
+    decode_event(&pool, &to_decode_blocks, &storage_rows).await?;
+    decode_delegation(&pool, &to_decode_blocks, &storage_rows).await?;
     decode_timestamp(&pool, &to_decode_blocks).await?; // make sure all the other storages were inserted successfully
 
     Ok(())
@@ -73,15 +72,26 @@ async fn get_block_storage_rows(
         block_num_vec.push(row.0);
     }
     // storage can't be null because sqlx will report DecodeError
-    match sqlx::query_as("select block_num, encode(key, 'hex') as key_hex, encode(storage, 'hex') as storage_hex from storage where storage is not null and block_num = Any($1) order by block_num asc;")
+    let rows_result: Result<Vec<(i32, String, Option<String>)>, sqlx::Error> = sqlx::query_as("select block_num, encode(key, 'hex') as key_hex, encode(storage, 'hex') as storage_hex from storage where block_num = Any($1) order by block_num asc;")
     .bind(&block_num_vec[..])
     .fetch_all(pool)
-    .await {
-        Ok(rows) => rows,
+    .await;
+    match rows_result {
+        Ok(rows) => {
+            let mut res = vec![];
+            for row in &rows {
+                let storage_val = match row.2.clone() {
+                    Some(val) => val,
+                    None => String::from(""),
+                };
+                res.push((row.0, row.1.clone(), storage_val));
+            }
+            res
+        }
         Err(err) => {
-            println!("err {:?}", err);
+            println!("get_bloock_storage_rows error {:?}", err);
             vec![]
-        },
+        }
     }
 }
 
@@ -141,9 +151,8 @@ async fn decode_timestamp(
 async fn decode_balance(
     pool: &Pool<Postgres>,
     block_rows: &[(i32, String)],
+    storage_rows: &[(i32, String, String)],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let storage_rows = get_block_storage_rows(pool, block_rows).await;
-
     let mut to_insert_data: Vec<(i32, String, u32, u128, u128, u128, u128)> = vec![];
     for row in block_rows {
         // loop block
@@ -151,7 +160,7 @@ async fn decode_balance(
         for addr in block_addr_hs {
             // loop user
             let key = crate::common::system_account_key(addr.clone());
-            for storage_row in &storage_rows {
+            for storage_row in storage_rows {
                 if storage_row.0 == row.0 && storage_row.1 == hex::encode(key.clone()) {
                     let storage_key: String = storage_row.1.clone();
                     let storage_str: String = storage_row.2.clone();
@@ -259,15 +268,14 @@ impl fmt::Display for DecodeAccountIdFailed {
 async fn decode_credit(
     pool: &Pool<Postgres>,
     block_rows: &[(i32, String)],
+    storage_rows: &[(i32, String, String)],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let storage_rows = get_block_storage_rows(pool, block_rows).await;
-
     let mut to_insert_data = vec![];
     for row in block_rows {
         let sign_addrs = crate::credit_decoder::get_credit_changed_account_ids(&row.1);
         for addr in sign_addrs {
             let key = crate::common::user_credit_key(addr.clone());
-            for storage_row in &storage_rows {
+            for storage_row in storage_rows {
                 if storage_row.0 == row.0 && storage_row.1 == hex::encode(key.clone()) {
                     let storage_key: String = storage_row.1.clone();
                     let storage_str: String = storage_row.2.clone();
@@ -324,13 +332,12 @@ async fn decode_credit(
 async fn decode_event(
     pool: &Pool<Postgres>,
     block_rows: &[(i32, String)],
+    storage_rows: &[(i32, String, String)],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let storage_rows = get_block_storage_rows(pool, block_rows).await;
-
     let mut to_insert_data: Vec<(i32, Value)> = vec![];
     let event_key = hex::encode(crate::common::event_key());
     for row in block_rows {
-        for storage_row in &storage_rows {
+        for storage_row in storage_rows {
             if storage_row.0 == row.0 && storage_row.1 == event_key {
                 let events =
                     event_decoder::decode_event(&storage_row.1, &storage_row.2, deeper_metadata());
@@ -367,13 +374,17 @@ async fn decode_event(
 async fn decode_delegation(
     pool: &Pool<Postgres>,
     block_rows: &[(i32, String)],
+    storage_rows: &[(i32, String, String)],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let storage_rows = get_block_storage_rows(pool, block_rows).await;
     for row in block_rows {
         let block_addr_hs = crate::delegation_decoder::get_delegation_changed_account_ids(&row.1);
         for addr in block_addr_hs {
-            for storage_row in &storage_rows {
-                if storage_row.0 == row.0 && storage_row.1 == hex::encode(crate::common::staking_delegators_key(addr.clone())) {
+            for storage_row in storage_rows {
+                if storage_row.0 == row.0
+                    && storage_row.1
+                        == hex::encode(crate::common::staking_delegators_key(addr.clone()))
+                {
+                    // TODO: handle null storage
                     let validators = delegation_decoder::get_validators(
                         &storage_row.1,
                         &storage_row.2,
