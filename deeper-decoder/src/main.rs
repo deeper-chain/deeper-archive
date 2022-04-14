@@ -7,6 +7,7 @@ use sp_core::crypto::Ss58Codec;
 use sqlx::postgres::{PgPoolOptions, Postgres};
 use sqlx::types::bstr;
 use sqlx::types::time::OffsetDateTime;
+use sqlx::types::Decimal;
 use sqlx::types::Json;
 use sqlx::{Pool, Row};
 use std::{error::Error, fmt};
@@ -24,7 +25,7 @@ fn deeper_metadata() -> Metadata {
     Metadata::from_bytes(V14_METADATA_DEEPER_SCALE).expect("valid metadata")
 }
 
-const BATCH_SIZE: i32 = 1000;
+const BATCH_SIZE: i32 = 100;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CurrentExtrinsic<'a> {
@@ -40,15 +41,44 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     let start_block = get_last_synced_block(&pool).await?;
+    let to_decode_blocks = get_to_decode_blocks(&pool, start_block).await;
 
     // TODO: consider using join
-    decode_balance(&pool, start_block).await?;
-    decode_credit(&pool, start_block).await?;
-    decode_event(&pool, start_block).await?;
-    decode_delegation(&pool, start_block).await?;
-    decode_timestamp(&pool, start_block).await?; // make sure all the other storages were inserted successfully
+    decode_balance(&pool, &to_decode_blocks).await?;
+    decode_credit(&pool, &to_decode_blocks).await?;
+    decode_event(&pool, &to_decode_blocks).await?;
+    decode_delegation(&pool, &to_decode_blocks).await?;
+    decode_timestamp(&pool, &to_decode_blocks).await?; // make sure all the other storages were inserted successfully
 
     Ok(())
+}
+
+async fn get_to_decode_blocks(pool: &Pool<Postgres>, start_block: i32) -> Vec<(i32, String)> {
+    match sqlx::query_as("select number, extrinsics::text from extrinsics where number > $1 order by number asc limit $2;")
+        .bind(start_block)
+        .bind(BATCH_SIZE)
+        .fetch_all(pool)
+        .await {
+        Ok(rows) => rows,
+        _ => vec![],
+    }
+}
+
+async fn get_block_storage_rows(
+    pool: &Pool<Postgres>,
+    block_rows: &[(i32, String)],
+) -> Vec<(i32, String, String)> {
+    let mut block_num_vec = vec![];
+    for row in block_rows {
+        block_num_vec.push(row.0);
+    }
+    match sqlx::query_as("select block_num, encode(key, 'hex') as key_hex, encode(storage, 'hex') as storage_hex from storage where block_num = Any($1) order by block_num asc;")
+    .bind(&block_num_vec[..])
+    .fetch_all(pool)
+    .await {
+        Ok(rows) => rows,
+        _ => vec![],
+    }
 }
 
 async fn get_last_synced_block(pool: &Pool<Postgres>) -> Result<i32, Box<dyn std::error::Error>> {
@@ -60,22 +90,16 @@ async fn get_last_synced_block(pool: &Pool<Postgres>) -> Result<i32, Box<dyn std
         Ok(row) => row.try_get("block_num")?,
         Err(_) => 0,
     };
-    // let block_num = row.try_get("block_num")?;
 
     Ok(block_num)
 }
 
 async fn decode_timestamp(
     pool: &Pool<Postgres>,
-    start_block: i32,
+    rows: &[(i32, String)],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let rows: Vec<(i32, String)> = sqlx::query_as("select number, extrinsics::text from extrinsics where number > $1 order by number asc limit $2;")
-    .bind(start_block)
-    .bind(BATCH_SIZE)
-    .fetch_all(pool)
-    .await?;
-
-    for row in &rows {
+    let mut to_insert_data: Vec<(i32, u64)> = vec![];
+    for row in rows {
         let extrinsics: Vec<CurrentExtrinsic> = serde_json::from_str(&row.1)?;
         for extrinsic in &extrinsics {
             if extrinsic.current.call_data.pallet_name == "Timestamp"
@@ -83,98 +107,134 @@ async fn decode_timestamp(
             {
                 match extrinsic.current.call_data.arguments[0] {
                     Value::Primitive(Primitive::U64(ts_ms)) => {
-                        let tss = ts_ms / 1000;
-                        // println!("block: {}, timestamp: {:?}", row.0, tss);
-                        let ts_timestamp = OffsetDateTime::from_unix_timestamp(tss as i64);
-                        sqlx::query(
-                            "insert into block_timestamp(block_num, block_time) values ($1, $2)",
-                        )
-                        .bind(row.0)
-                        .bind(ts_timestamp)
-                        .execute(pool)
-                        .await?;
+                        to_insert_data.push((row.0, ts_ms));
                     }
                     _ => {}
                 }
             }
         }
     }
+    if to_insert_data.is_empty() {
+        return Ok(());
+    }
+    let mut to_insert_block_nums = vec![];
+    let mut to_insert_ts = vec![];
+    to_insert_data.into_iter().for_each(|value| {
+        to_insert_block_nums.push(value.0);
+        to_insert_ts.push(OffsetDateTime::from_unix_timestamp((value.1 / 1000) as i64))
+    });
+    sqlx::query("insert into block_timestamp(block_num, block_time) select * from unnest ($1, $2);")
+        .bind(to_insert_block_nums)
+        .bind(to_insert_ts)
+        .execute(pool)
+        .await?;
 
     Ok(())
 }
 
 async fn decode_balance(
     pool: &Pool<Postgres>,
-    start_block: i32,
+    block_rows: &[(i32, String)],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let rows: Vec<(i32, String)> = sqlx::query_as("select number, extrinsics::text from extrinsics where number > $1 order by number asc limit $2;")
-    .bind(start_block)
-    .bind(BATCH_SIZE)
-    .fetch_all(pool)
-    .await?;
+    let storage_rows = get_block_storage_rows(pool, block_rows).await;
 
-    for row in &rows {
-        let sign_addrs = crate::balance_decoder::get_balance_changed_account_ids(&row.1);
-        for addr in sign_addrs {
+    let mut to_insert_data: Vec<(i32, String, u32, u128, u128, u128, u128)> = vec![];
+    for row in block_rows {
+        // loop block
+        let block_addr_hs = crate::balance_decoder::get_balance_changed_account_ids(&row.1);
+        for addr in block_addr_hs {
+            // loop user
             let key = crate::common::system_account_key(addr.clone());
-            let storage_row = sqlx::query("select block_num, encode(storage, 'hex') as storage_hex, encode(key, 'hex') as key_hex from storage where key=$1;")
-                .bind(bstr::BString::from(key.clone()))
-                .fetch_one(pool)
-                .await?;
+            for storage_row in &storage_rows {
+                if storage_row.0 == row.0 && storage_row.1 == hex::encode(key.clone()) {
+                    let storage_key: String = storage_row.1.clone();
+                    let storage_str: String = storage_row.2.clone();
+                    let storage_val = crate::common::decode_storage(
+                        &storage_key,
+                        &storage_str,
+                        deeper_metadata(),
+                    );
 
-            let storage_key: String = storage_row.try_get("key_hex")?;
-            let storage_str: String = storage_row.try_get("storage_hex")?;
-            let storage_val =
-                crate::common::decode_storage(&storage_key, &storage_str, deeper_metadata());
-
-            // println!("storage_val {:?}", storage_val);
-            let (nonce, free, reserved, misc_frozen, fee_frozen) = match storage_val {
-                Value::Composite(Composite::Named(cn)) => {
-                    let nonce = match cn[0].1.clone() {
-                        Value::Primitive(value::Primitive::U32(inner)) => inner,
-                        _ => 0,
-                    };
-                    let (free, reserved, misc_frozen, fee_frozen) = match cn[4].1.clone() {
-                        Value::Composite(Composite::Named(cnd)) => {
-                            let free = match cnd[0].1 {
-                                Value::Primitive(value::Primitive::U128(inner)) => inner,
+                    let (nonce, free, reserved, misc_frozen, fee_frozen) = match storage_val {
+                        Value::Composite(Composite::Named(cn)) => {
+                            let nonce = match cn[0].1.clone() {
+                                Value::Primitive(value::Primitive::U32(inner)) => inner,
                                 _ => 0,
                             };
-                            let reserved = match cnd[1].1 {
-                                Value::Primitive(value::Primitive::U128(inner)) => inner,
-                                _ => 0,
+                            let (free, reserved, misc_frozen, fee_frozen) = match cn[4].1.clone() {
+                                Value::Composite(Composite::Named(cnd)) => {
+                                    let free = match cnd[0].1 {
+                                        Value::Primitive(value::Primitive::U128(inner)) => inner,
+                                        _ => 0,
+                                    };
+                                    let reserved = match cnd[1].1 {
+                                        Value::Primitive(value::Primitive::U128(inner)) => inner,
+                                        _ => 0,
+                                    };
+                                    let misc_frozen = match cnd[2].1 {
+                                        Value::Primitive(value::Primitive::U128(inner)) => inner,
+                                        _ => 0,
+                                    };
+                                    let fee_frozen = match cnd[3].1 {
+                                        Value::Primitive(value::Primitive::U128(inner)) => inner,
+                                        _ => 0,
+                                    };
+                                    (free, reserved, misc_frozen, fee_frozen)
+                                }
+                                _ => (0, 0, 0, 0),
                             };
-                            let misc_frozen = match cnd[2].1 {
-                                Value::Primitive(value::Primitive::U128(inner)) => inner,
-                                _ => 0,
-                            };
-                            let fee_frozen = match cnd[3].1 {
-                                Value::Primitive(value::Primitive::U128(inner)) => inner,
-                                _ => 0,
-                            };
-                            (free, reserved, misc_frozen, fee_frozen)
+                            (nonce, free, reserved, misc_frozen, fee_frozen)
                         }
-                        _ => (0, 0, 0, 0),
+                        _ => (0, 0, 0, 0, 0),
                     };
-                    (nonce, free, reserved, misc_frozen, fee_frozen)
-                }
-                _ => (0, 0, 0, 0, 0),
-            };
 
-            sqlx::query(
-                "insert into block_balance(block_num, address, nonce, free, reserved, misc_frozen, fee_frozen) values ($1, $2, $3, $4, $5, $6, $7)",
-            )
-            .bind(row.0)
-            .bind(addr.to_ss58check())
-            .bind(nonce)
-            .bind(sqlx::types::Decimal::from_i128_with_scale(free as i128, 0))
-            .bind(sqlx::types::Decimal::from_i128_with_scale(reserved as i128, 0))
-            .bind(sqlx::types::Decimal::from_i128_with_scale(misc_frozen as i128, 0))
-            .bind(sqlx::types::Decimal::from_i128_with_scale(fee_frozen as i128, 0))
-            .execute(pool)
-            .await?;
+                    to_insert_data.push((
+                        row.0,
+                        addr.to_ss58check(),
+                        nonce,
+                        free,
+                        reserved,
+                        misc_frozen,
+                        fee_frozen,
+                    ));
+                    break;
+                }
+            }
         }
     }
+
+    if to_insert_data.is_empty() {
+        // no data need to insert
+        return Ok(());
+    }
+    let mut to_insert_block_nums: Vec<i32> = vec![];
+    let mut to_insert_addrs: Vec<String> = vec![];
+    let mut to_insert_nonces: Vec<u32> = vec![];
+    let mut to_insert_fee = vec![];
+    let mut to_insert_reserved = vec![];
+    let mut to_insert_misc_frozen = vec![];
+    let mut to_insert_fee_frozen = vec![];
+    to_insert_data.into_iter().for_each(|value| {
+        to_insert_block_nums.push(value.0);
+        to_insert_addrs.push(value.1);
+        to_insert_nonces.push(value.2);
+        to_insert_fee.push(Decimal::from_i128_with_scale(value.3 as i128, 0));
+        to_insert_reserved.push(Decimal::from_i128_with_scale(value.4 as i128, 0));
+        to_insert_misc_frozen.push(Decimal::from_i128_with_scale(value.5 as i128, 0));
+        to_insert_fee_frozen.push(Decimal::from_i128_with_scale(value.6 as i128, 0));
+    });
+    sqlx::query(
+        "insert into block_balance(block_num, address, nonce, free, reserved, misc_frozen, fee_frozen) select * from unnest ($1, $2, $3, $4, $5, $6, $7);",
+    )
+    .bind(&to_insert_block_nums)
+    .bind(&to_insert_addrs)
+    .bind(&to_insert_nonces)
+    .bind(&to_insert_fee)
+    .bind(&to_insert_reserved)
+    .bind(&to_insert_misc_frozen)
+    .bind(&to_insert_fee_frozen)
+    .execute(pool)
+    .await?;
 
     Ok(())
 }
@@ -192,90 +252,123 @@ impl fmt::Display for DecodeAccountIdFailed {
 
 async fn decode_credit(
     pool: &Pool<Postgres>,
-    start_block: i32,
+    block_rows: &[(i32, String)],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let rows: Vec<(i32, String)> = sqlx::query_as("select number, extrinsics::text from extrinsics where number > $1 order by number asc limit $2;")
-    .bind(start_block)
-    .bind(BATCH_SIZE)
-    .fetch_all(pool)
-    .await?;
+    let storage_rows = get_block_storage_rows(pool, block_rows).await;
 
-    for row in &rows {
+    let mut to_insert_data = vec![];
+    for row in block_rows {
         let sign_addrs = crate::credit_decoder::get_credit_changed_account_ids(&row.1);
         for addr in sign_addrs {
             let key = crate::common::user_credit_key(addr.clone());
 
-            let storage_row = sqlx::query("select block_num, encode(storage, 'hex') as storage_hex, encode(key, 'hex') as key_hex from storage where key=$1;")
-                .bind(bstr::BString::from(key.clone()))
-                .fetch_one(pool)
-                .await?;
-            let storage_key: String = storage_row.try_get("key_hex")?;
-            let storage_str: String = storage_row.try_get("storage_hex")?;
-            let storage_val =
-                crate::common::decode_storage(&storage_key, &storage_str, deeper_metadata());
+            // let storage_row = sqlx::query("select block_num, encode(storage, 'hex') as storage_hex, encode(key, 'hex') as key_hex from storage where key=$1;")
+            //     .bind(bstr::BString::from(key.clone()))
+            //     .fetch_one(pool)
+            //     .await?;
+            for storage_row in &storage_rows {
+                if storage_row.0 == row.0 && storage_row.1 == hex::encode(key.clone()) {
+                    let storage_key: String = storage_row.1.clone();
+                    let storage_str: String = storage_row.2.clone();
+                    let storage_val = crate::common::decode_storage(
+                        &storage_key,
+                        &storage_str,
+                        deeper_metadata(),
+                    );
 
-            println!("credit storage {:?}, {}", storage_val, storage_str);
-
-            match storage_val {
-                Value::Composite(Composite::Named(data)) => {
-                    match data[1].1.clone() {
-                        Value::Primitive(Primitive::U64(credit)) => {
-                            // insert into database
-                            sqlx::query(
-                                "insert into block_credit(block_num, address, credit) values ($1, $2, $3)",
-                            )
-                            .bind(row.0)
-                            .bind(addr.to_ss58check())
-                            .bind(credit as i32) // credit field integer
-                            .execute(pool)
-                            .await?;
+                    match storage_val {
+                        Value::Composite(Composite::Named(data)) => {
+                            match data[1].1.clone() {
+                                Value::Primitive(Primitive::U64(credit)) => {
+                                    // insert into database
+                                    to_insert_data.push((
+                                        row.0,
+                                        addr.to_ss58check(),
+                                        credit as i32,
+                                    ));
+                                }
+                                _ => {}
+                            }
                         }
                         _ => {}
                     }
                 }
-                _ => assert!(false),
             }
         }
     }
+    if to_insert_data.is_empty() {
+        // no data need to insert
+        return Ok(());
+    }
+    let mut to_insert_block_nums = vec![];
+    let mut to_insert_addrs = vec![];
+    let mut to_insert_credits = vec![];
+    to_insert_data.into_iter().for_each(|value| {
+        to_insert_block_nums.push(value.0);
+        to_insert_addrs.push(value.1);
+        to_insert_credits.push(value.2);
+    });
+    sqlx::query(
+        "insert into block_credit(block_num, address, credit) select * from unnest ($1, $2, $3)",
+    )
+    .bind(&to_insert_block_nums)
+    .bind(&to_insert_addrs)
+    .bind(&to_insert_credits) // credit field integer
+    .execute(pool)
+    .await?;
 
     Ok(())
 }
 
 async fn decode_event(
     pool: &Pool<Postgres>,
-    start_block: i32,
+    block_rows: &[(i32, String)],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let event_key = hex::encode(crate::common::event_key());
-    // this sql won't return null because every block have events
-    let rows: Vec<(i32, String, String)> = sqlx::query_as("select block_num, encode(key, 'hex') as key_hex, encode(storage, 'hex') as storage_hex from storage where block_num > $1 and encode(key, 'hex') = $2 order by block_num asc limit $3;")
-    .bind(start_block)
-    .bind(event_key)
-    .bind(BATCH_SIZE)
-    .fetch_all(pool)
-    .await?;
+    // let mut block_nums_hs: HashSet<i32> = HashSet::new();
+    // for block in block_rows {
+    //     block_nums_hs.insert(block.0);
+    // }
+    // let block_nums_vec: Vec<i32> = Vec::from_iter(block_nums_hs);
+    // let event_key = hex::encode(crate::common::event_key());
+    // // this sql won't return null because every block have events
+    // let rows: Vec<(i32, String, String)> = sqlx::query_as("select block_num, encode(key, 'hex') as key_hex, encode(storage, 'hex') as storage_hex from storage where block_num = Any($1) and encode(key, 'hex') = $2 order by block_num asc;")
+    // .bind(&block_nums_vec[..])
+    // .bind(event_key)
+    // .fetch_all(pool)
+    // .await?;
+    let storage_rows = get_block_storage_rows(pool, block_rows).await;
 
-    let mut values: Vec<(i32, Value)> = vec![];
-    for row in &rows {
-        let events = event_decoder::decode_event(&row.1, &row.2, deeper_metadata());
-        for event in &events {
-            values.push((row.0, event.to_owned()));
+    let mut to_insert_data: Vec<(i32, Value)> = vec![];
+    for row in block_rows {
+        let event_key = hex::encode(crate::common::event_key());
+        for storage_row in &storage_rows {
+            if storage_row.0 == row.0 && storage_row.1 == hex::encode(event_key.clone()) {
+                let events =
+                    event_decoder::decode_event(&storage_row.1, &storage_row.2, deeper_metadata());
+                for event in &events {
+                    to_insert_data.push((row.0, event.to_owned()));
+                }
+            }
         }
     }
 
+    if to_insert_data.is_empty() {
+        return Ok(());
+    }
     // insert many rows
     // https://github.com/launchbadge/sqlx/issues/294#issuecomment-830409187
-    let mut block_nums: Vec<i32> = vec![];
-    let mut infos: Vec<Json<Value>> = vec![];
-    values.into_iter().for_each(|value| {
-        block_nums.push(value.0);
-        infos.push(Json(value.1));
+    let mut to_insert_block_nums: Vec<i32> = vec![];
+    let mut to_insert_infos: Vec<Json<Value>> = vec![];
+    to_insert_data.into_iter().for_each(|value| {
+        to_insert_block_nums.push(value.0);
+        to_insert_infos.push(Json(value.1));
     });
     sqlx::query(
         r#"INSERT INTO block_event (block_num, info)
         SELECT * FROM UNNEST($1, $2);"#,
     )
-    .bind(&block_nums)
-    .bind(&infos)
+    .bind(&to_insert_block_nums)
+    .bind(&to_insert_infos)
     .execute(pool)
     .await?;
 
@@ -284,15 +377,9 @@ async fn decode_event(
 
 async fn decode_delegation(
     pool: &Pool<Postgres>,
-    start_block: i32,
+    rows: &[(i32, String)],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let rows: Vec<(i32, String)> = sqlx::query_as("select number, extrinsics::text from extrinsics where number > $1 order by number asc limit $2;")
-    .bind(start_block)
-    .bind(BATCH_SIZE)
-    .fetch_all(pool)
-    .await?;
-
-    for row in &rows {
+    for row in rows {
         let sign_addrs = crate::delegation_decoder::get_delegation_changed_account_ids(&row.1);
         for addr in sign_addrs {
             let key = crate::common::staking_delegators_key(addr.clone());

@@ -2,6 +2,7 @@ drop table if exists block_balance;
 drop table if exists block_credit;
 drop table if exists block_timestamp;
 drop table if exists block_event;
+drop table if exists block_delegation;
 
 CREATE TABLE IF NOT EXISTS block_balance (
   id bigserial NOT NULL,
