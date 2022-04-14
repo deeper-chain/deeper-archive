@@ -25,7 +25,7 @@ fn deeper_metadata() -> Metadata {
     Metadata::from_bytes(V14_METADATA_DEEPER_SCALE).expect("valid metadata")
 }
 
-const BATCH_SIZE: i32 = 100;
+const BATCH_SIZE: i32 = 1000;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CurrentExtrinsic<'a> {
@@ -72,12 +72,16 @@ async fn get_block_storage_rows(
     for row in block_rows {
         block_num_vec.push(row.0);
     }
-    match sqlx::query_as("select block_num, encode(key, 'hex') as key_hex, encode(storage, 'hex') as storage_hex from storage where block_num = Any($1) order by block_num asc;")
+    // storage can't be null because sqlx will report DecodeError
+    match sqlx::query_as("select block_num, encode(key, 'hex') as key_hex, encode(storage, 'hex') as storage_hex from storage where storage is not null and block_num = Any($1) order by block_num asc;")
     .bind(&block_num_vec[..])
     .fetch_all(pool)
     .await {
         Ok(rows) => rows,
-        _ => vec![],
+        Err(err) => {
+            println!("err {:?}", err);
+            vec![]
+        },
     }
 }
 
@@ -123,11 +127,13 @@ async fn decode_timestamp(
         to_insert_block_nums.push(value.0);
         to_insert_ts.push(OffsetDateTime::from_unix_timestamp((value.1 / 1000) as i64))
     });
-    sqlx::query("insert into block_timestamp(block_num, block_time) select * from unnest ($1, $2);")
-        .bind(to_insert_block_nums)
-        .bind(to_insert_ts)
-        .execute(pool)
-        .await?;
+    sqlx::query(
+        "insert into block_timestamp(block_num, block_time) select * from unnest ($1, $2);",
+    )
+    .bind(to_insert_block_nums)
+    .bind(to_insert_ts)
+    .execute(pool)
+    .await?;
 
     Ok(())
 }
@@ -261,11 +267,6 @@ async fn decode_credit(
         let sign_addrs = crate::credit_decoder::get_credit_changed_account_ids(&row.1);
         for addr in sign_addrs {
             let key = crate::common::user_credit_key(addr.clone());
-
-            // let storage_row = sqlx::query("select block_num, encode(storage, 'hex') as storage_hex, encode(key, 'hex') as key_hex from storage where key=$1;")
-            //     .bind(bstr::BString::from(key.clone()))
-            //     .fetch_one(pool)
-            //     .await?;
             for storage_row in &storage_rows {
                 if storage_row.0 == row.0 && storage_row.1 == hex::encode(key.clone()) {
                     let storage_key: String = storage_row.1.clone();
@@ -324,25 +325,13 @@ async fn decode_event(
     pool: &Pool<Postgres>,
     block_rows: &[(i32, String)],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // let mut block_nums_hs: HashSet<i32> = HashSet::new();
-    // for block in block_rows {
-    //     block_nums_hs.insert(block.0);
-    // }
-    // let block_nums_vec: Vec<i32> = Vec::from_iter(block_nums_hs);
-    // let event_key = hex::encode(crate::common::event_key());
-    // // this sql won't return null because every block have events
-    // let rows: Vec<(i32, String, String)> = sqlx::query_as("select block_num, encode(key, 'hex') as key_hex, encode(storage, 'hex') as storage_hex from storage where block_num = Any($1) and encode(key, 'hex') = $2 order by block_num asc;")
-    // .bind(&block_nums_vec[..])
-    // .bind(event_key)
-    // .fetch_all(pool)
-    // .await?;
     let storage_rows = get_block_storage_rows(pool, block_rows).await;
 
     let mut to_insert_data: Vec<(i32, Value)> = vec![];
+    let event_key = hex::encode(crate::common::event_key());
     for row in block_rows {
-        let event_key = hex::encode(crate::common::event_key());
         for storage_row in &storage_rows {
-            if storage_row.0 == row.0 && storage_row.1 == hex::encode(event_key.clone()) {
+            if storage_row.0 == row.0 && storage_row.1 == event_key {
                 let events =
                     event_decoder::decode_event(&storage_row.1, &storage_row.2, deeper_metadata());
                 for event in &events {
@@ -377,45 +366,25 @@ async fn decode_event(
 
 async fn decode_delegation(
     pool: &Pool<Postgres>,
-    rows: &[(i32, String)],
+    block_rows: &[(i32, String)],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    for row in rows {
-        let sign_addrs = crate::delegation_decoder::get_delegation_changed_account_ids(&row.1);
-        for addr in sign_addrs {
-            let key = crate::common::staking_delegators_key(addr.clone());
-            let storage_result = sqlx::query("select block_num, encode(storage, 'hex') as storage_hex, encode(key, 'hex') as key_hex from storage where key=$1;")
-                .bind(bstr::BString::from(key.clone()))
-                .fetch_one(pool)
-                .await;
-
-            match storage_result {
-                Ok(storage_row) => {
-                    let storage_key: String = storage_row.try_get("key_hex")?;
-                    let storage_str: String = storage_row.try_get("storage_hex")?;
-
+    let storage_rows = get_block_storage_rows(pool, block_rows).await;
+    for row in block_rows {
+        let block_addr_hs = crate::delegation_decoder::get_delegation_changed_account_ids(&row.1);
+        for addr in block_addr_hs {
+            for storage_row in &storage_rows {
+                if storage_row.0 == row.0 && storage_row.1 == hex::encode(crate::common::staking_delegators_key(addr.clone())) {
                     let validators = delegation_decoder::get_validators(
-                        &storage_key,
-                        &storage_str,
+                        &storage_row.1,
+                        &storage_row.2,
                         deeper_metadata(),
                     );
-
                     sqlx::query(
                         "insert into block_delegation(block_num, delegator, validators) values ($1, $2, $3)",
                     )
                     .bind(row.0)
                     .bind(addr.to_ss58check())
                     .bind(Json(validators))
-                    .execute(pool)
-                    .await?;
-                }
-                _ => {
-                    let delegators: Vec<AccountId32> = vec![];
-                    sqlx::query(
-                        "insert into block_delegation(block_num, delegator, validators) values ($1, $2, $3)",
-                    )
-                    .bind(row.0)
-                    .bind(addr.to_ss58check())
-                    .bind(Json(delegators))
                     .execute(pool)
                     .await?;
                 }
