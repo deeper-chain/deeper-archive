@@ -1,11 +1,11 @@
 [chain]
 # Must be an absolute path to the folder where polkadot/kusama/and westend chain data is stored
 # Can also be specified via the `CHAIN_DATA_DB` environment variable
-data_path = "/tmp/alice/chains/dev/db/full"
+data_path = "/home/joey/deeper-chain-testnet/data/chains/deeper_chain_mainnet/db/full"
 
 # How much should the read-only database keep in cache (MB)
 # Optional, default: 128
-cache_size = 128
+cache_size = 512
 
 # RocksDB secondary directory
 # Optional, default: /<local>/substrate_archive/rocksdb_secondary/
@@ -14,7 +14,7 @@ rocksdb_secondary_path = "./substrate_archive/rocksdb_secondary"
 [runtime]
 # Specification of different methods of executing the runtime Wasm code.
 # Optional, "Interpreted" or "Compiled", default: "Interpreted"
-exec_method = "Interpreted"
+exec_method = "Compiled"
 
 # Number of threads to dedicate for executing blocks
 # Optional, default: the number of logical system threads
@@ -22,11 +22,11 @@ exec_method = "Interpreted"
 # else the wasm executor will run out of memory.
 # This also increases substrate-archives memory usage.
 # Generally, you want 32 pages per block worker
-block_workers = 1
+block_workers = 16
 
 # Number of 64KB Heap Pages to allocate for WASM execution
 # Optional, default: 1024.
-wasm_pages = 512
+wasm_pages = 1024
 
 [database]
 # Database url.
@@ -38,12 +38,12 @@ url = "postgres://postgres:123@localhost:6432/deeper_local"
 
 [log]
 # Optional log level of stdout, default: "DEBUG"
-std = "DEBUG"
+std = "INFO"
 
 # Optional file log.
 [log.file]
 # Optional log level of file, default: "DEBUG"
-level = "DEBUG"
+level = "INFO"
 # Optional log file directory path, default: "/<local>/substrate_archive/"
 dir = "./output/"
 # Optional log file name, default: current time in UTC + ".log"
