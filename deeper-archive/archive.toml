@@ -22,7 +22,7 @@ exec_method = "Compiled"
 # else the wasm executor will run out of memory.
 # This also increases substrate-archives memory usage.
 # Generally, you want 32 pages per block worker
-block_workers = 16
+block_workers = 32
 
 # Number of 64KB Heap Pages to allocate for WASM execution
 # Optional, default: 1024.
@@ -69,7 +69,7 @@ max_block_load = 100000
 
 [wasm_tracing]
 # Targets for tracing.
-targets = '''wasm_tracing,pallet,frame,state'''
+# targets = '''wasm_tracing,pallet,frame,state'''
 
 # Folder where tracing-enabled WASM binaries are kept.
 #folder = ""
