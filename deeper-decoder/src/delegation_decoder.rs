@@ -5,28 +5,33 @@ use sp_runtime::MultiAddress;
 use std::collections::HashSet;
 
 pub fn get_delegation_changed_account_ids(ext: &str) -> HashSet<AccountId32> {
-    let extrinsics: Vec<crate::CurrentExtrinsic> = serde_json::from_str(ext).unwrap();
-
     let mut account_ids: HashSet<AccountId32> = HashSet::new();
-    for extrinsic in &extrinsics {
-        if extrinsic.current.call_data.pallet_name == "Staking"
-            && ["delegate", "undelegate"].contains(&extrinsic.current.call_data.ty.name().as_str())
-        {
-            match extrinsic.current.signature.clone() {
-                Some(signature_val) => match signature_val.address {
-                    MultiAddress::Id(account_id) => {
-                        account_ids.insert(account_id);
+
+    match serde_json::from_str::<Vec<crate::CurrentExtrinsic>>(ext) {
+        Ok(extrinsics) => {
+            for extrinsic in &extrinsics {
+                if extrinsic.current.call_data.pallet_name == "Staking"
+                    && ["delegate", "undelegate"]
+                        .contains(&extrinsic.current.call_data.ty.name().as_str())
+                {
+                    match extrinsic.current.signature.clone() {
+                        Some(signature_val) => match signature_val.address {
+                            MultiAddress::Id(account_id) => {
+                                account_ids.insert(account_id);
+                            }
+                            _ => {}
+                        },
+                        _ => {}
                     }
-                    _ => {}
-                },
-                _ => {}
+                }
             }
+            account_ids
         }
+        Err(_) => account_ids,
     }
-    account_ids
 }
 
-pub fn get_validators(storage_key: &str, storage_val: &str, meta: Metadata) -> Vec<AccountId32> {
+pub fn get_validators(storage_key: &str, storage_val: &str, meta: &Metadata) -> Vec<AccountId32> {
     let val = crate::common::decode_storage(storage_key, storage_val, meta);
     let mut res = vec![];
     match val {
@@ -68,13 +73,13 @@ pub fn get_validators(storage_key: &str, storage_val: &str, meta: Metadata) -> V
 mod tests {
     use sp_core::crypto::Ss58Codec;
 
-    use crate::deeper_metadata;
+    use crate::common::deeper_metadata;
 
     use super::*;
 
     #[test]
     fn test_get_delegator() {
-        let res = get_validators("5f3e4907f716ac89b6347d15ececedcae1c5df6d2773f08c7b6b1b6d0139c22a3594ef778a4003043f6d977057644d65a88b59afe73f0e769e4f9d85cd40fd13f0874446f22d2ab6780f9cb89059307e", "a88b59afe73f0e769e4f9d85cd40fd13f0874446f22d2ab6780f9cb89059307e04be5ddb1579b72e84524fc29e78609e3caf42e85aa118ebfe0b0ad404b5bdd25f010100000001", deeper_metadata());
+        let res = get_validators("5f3e4907f716ac89b6347d15ececedcae1c5df6d2773f08c7b6b1b6d0139c22a3594ef778a4003043f6d977057644d65a88b59afe73f0e769e4f9d85cd40fd13f0874446f22d2ab6780f9cb89059307e", "a88b59afe73f0e769e4f9d85cd40fd13f0874446f22d2ab6780f9cb89059307e04be5ddb1579b72e84524fc29e78609e3caf42e85aa118ebfe0b0ad404b5bdd25f010100000001", &deeper_metadata());
         let alice_stash =
             AccountId32::from_ss58check("5GNJqTPyNqANBkUVMN1LPPrxXnFouWXoe2wNSmmEoLctxiZY")
                 .unwrap();
