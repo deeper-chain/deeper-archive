@@ -83,7 +83,7 @@ pipeline {
             }
             steps {
                 sh 'sudo cp ./target/debug/deeper-archive $ANSIBLE_PATH/'
-                sh 'sudo ansible-playbook -i $ANSIBLE_PATH/hosts $ANSIBLE_PATH/playbooks/deploy-dev.yml'
+                sh 'ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -i $ANSIBLE_PATH/hosts $ANSIBLE_PATH/playbooks/deploy-dev.yml'
             }
         }
     }
