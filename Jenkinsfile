@@ -1,5 +1,5 @@
 #!groovy
-
+def slackChannel = '#devops-test'
 def execNode = 'master-runner'
 def ansiblePath = '/root/ansible/deeper-archive/'
 def upstreamProjects = ''
@@ -69,6 +69,8 @@ pipeline {
             }
             steps {
                 sh '''
+                    rustup default nightly-2022-01-01
+                    rustup target add wasm32-unknown-unknown --toolchain nightly-2022-01-01
                     cargo build
                     '''
             }
@@ -77,7 +79,8 @@ pipeline {
         stage('Deploy code') {
             when {
                 anyOf {
-                    branch env.BRANCH_NAME
+                   branch "master"
+                   branch "dev"
                 }
             }
             steps {
