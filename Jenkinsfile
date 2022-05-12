@@ -1,7 +1,7 @@
 #!groovy
 def slackChannel = '#devops-test'
-def execNode = 'master-runner'
-def ansiblePath = '/root/ansible/deeper-archive/'
+def execNode = 'common-runner'
+def ansiblePath = '/tmp'
 def upstreamProjects = ''
 
 if (env.BRANCH_NAME == "master") {
@@ -69,9 +69,9 @@ pipeline {
             }
             steps {
                 sh '''
-                    rustup default nightly-2022-01-01
-                    rustup target add wasm32-unknown-unknown --toolchain nightly-2022-01-01
-                    cargo build
+                    sudo rustup default nightly-2022-01-01
+                    sudo rustup target add wasm32-unknown-unknown --toolchain nightly-2022-01-01
+                    sudo cargo build
                     '''
             }
         }
@@ -84,8 +84,8 @@ pipeline {
                 }
             }
             steps {
-                sh 'cp ./target/debug/deeper-archive $ANSIBLE_PATH/'
-                sh 'ansible-playbook -i $ANSIBLE_PATH/hosts $ANSIBLE_PATH/playbooks/deploy-dev.yml'
+                sh 'sudo cp ./target/debug/deeper-archive $ANSIBLE_PATH/'
+                sh 'sudo ansible-playbook -i $ANSIBLE_PATH/hosts $ANSIBLE_PATH/playbooks/deploy-dev.yml'
             }
         }
     }
