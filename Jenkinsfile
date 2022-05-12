@@ -1,7 +1,7 @@
 #!groovy
 def slackChannel = '#devops-test'
 def execNode = 'common-runner'
-def ansiblePath = '/tmp'
+def ansiblePath = '/home/ubuntu'
 def upstreamProjects = ''
 
 if (env.BRANCH_NAME == "master") {
@@ -69,8 +69,6 @@ pipeline {
             }
             steps {
                 sh '''
-                    sudo rustup default nightly-2022-01-01
-                    sudo rustup target add wasm32-unknown-unknown --toolchain nightly-2022-01-01
                     sudo cargo build
                     '''
             }
