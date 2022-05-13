@@ -16,13 +16,6 @@ mod credit_decoder;
 mod delegation_decoder;
 mod event_decoder;
 
-static V14_METADATA_DEEPER_SCALE: &[u8] = include_bytes!("../data/v14_metadata_deeper.scale");
-
-// TODO: read metadata from database
-fn deeper_metadata() -> Metadata {
-    Metadata::from_bytes(V14_METADATA_DEEPER_SCALE).expect("valid metadata")
-}
-
 const BATCH_SIZE: i32 = 1000;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -39,7 +32,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     let start_block = get_last_synced_block(&pool).await?;
-    let to_decode_blocks = get_to_decode_blocks(&pool, start_block).await;
+    let to_decode_blocks = get_to_decode_blocks(&pool, start_block).await?;
     let storage_rows = get_block_storage_rows(&pool, &to_decode_blocks).await;
 
     // TODO: consider using join
@@ -52,20 +45,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn get_to_decode_blocks(pool: &Pool<Postgres>, start_block: i32) -> Vec<(i32, String)> {
-    match sqlx::query_as("select number, extrinsics::text from extrinsics where number > $1 order by number asc limit $2;")
+// desub-current only support metadata v14 or newer
+// desub-legacy support metadata older than v14
+// deeper-chain upgraded to polkadot-v0.9.12 and metadata v14 in 2021-12-17
+// for simplicity we only consider spec >= 7 blocks, ignore older blocks here
+async fn get_to_decode_blocks(
+    pool: &Pool<Postgres>,
+    start_block: i32,
+) -> Result<Vec<(i32, String, Metadata)>, Box<dyn std::error::Error>> {
+    let rows: Vec<(i32, String, Vec<u8>)> = sqlx::query_as("select b.block_num, ext.extrinsics::text, mt.meta from extrinsics as ext left join blocks as b on ext.number=b.block_num left join metadata as mt on b.spec=mt.version where b.spec >= 7 and ext.number > $1 and ext.number=1899916 order by ext.number asc limit $2;")
         .bind(start_block)
         .bind(BATCH_SIZE)
         .fetch_all(pool)
-        .await {
-        Ok(rows) => rows,
-        _ => vec![],
+        .await?;
+    let mut res: Vec<(i32, String, Metadata)> = vec![];
+    for row in rows {
+        let meta = Metadata::from_bytes(&row.2).expect("valid metadata");
+        res.push((row.0, row.1, meta));
     }
+    Ok(res)
 }
 
 async fn get_block_storage_rows(
     pool: &Pool<Postgres>,
-    block_rows: &[(i32, String)],
+    block_rows: &[(i32, String, Metadata)],
 ) -> Vec<(i32, String, String)> {
     let mut block_num_vec = vec![];
     for row in block_rows {
@@ -110,21 +113,27 @@ async fn get_last_synced_block(pool: &Pool<Postgres>) -> Result<i32, Box<dyn std
 
 async fn decode_timestamp(
     pool: &Pool<Postgres>,
-    rows: &[(i32, String)],
+    rows: &[(i32, String, Metadata)],
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut to_insert_data: Vec<(i32, u64)> = vec![];
     for row in rows {
-        let extrinsics: Vec<CurrentExtrinsic> = serde_json::from_str(&row.1)?;
-        for extrinsic in &extrinsics {
-            if extrinsic.current.call_data.pallet_name == "Timestamp"
-                && extrinsic.current.call_data.ty.name() == "set"
-            {
-                match extrinsic.current.call_data.arguments[0] {
-                    Value::Primitive(Primitive::U64(ts_ms)) => {
-                        to_insert_data.push((row.0, ts_ms));
+        match serde_json::from_str::<Vec<CurrentExtrinsic>>(&row.1) {
+            Ok(extrinsics) => {
+                for extrinsic in &extrinsics {
+                    if extrinsic.current.call_data.pallet_name == "Timestamp"
+                        && extrinsic.current.call_data.ty.name() == "set"
+                    {
+                        match extrinsic.current.call_data.arguments[0] {
+                            Value::Primitive(Primitive::U64(ts_ms)) => {
+                                to_insert_data.push((row.0, ts_ms));
+                            }
+                            _ => {}
+                        }
                     }
-                    _ => {}
                 }
+            }
+            Err(_) => {
+                continue;
             }
         }
     }
@@ -150,7 +159,7 @@ async fn decode_timestamp(
 
 async fn decode_balance(
     pool: &Pool<Postgres>,
-    block_rows: &[(i32, String)],
+    block_rows: &[(i32, String, Metadata)],
     storage_rows: &[(i32, String, String)],
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut to_insert_data: Vec<(i32, String, u32, u128, u128, u128, u128)> = vec![];
@@ -164,11 +173,8 @@ async fn decode_balance(
                 if storage_row.0 == row.0 && storage_row.1 == hex::encode(key.clone()) {
                     let storage_key: String = storage_row.1.clone();
                     let storage_str: String = storage_row.2.clone();
-                    let storage_val = crate::common::decode_storage(
-                        &storage_key,
-                        &storage_str,
-                        deeper_metadata(),
-                    );
+                    let storage_val =
+                        crate::common::decode_storage(&storage_key, &storage_str, &row.2);
 
                     let (nonce, free, reserved, misc_frozen, fee_frozen) = match storage_val {
                         Value::Composite(Composite::Named(cn)) => {
@@ -267,7 +273,7 @@ impl fmt::Display for DecodeAccountIdFailed {
 
 async fn decode_credit(
     pool: &Pool<Postgres>,
-    block_rows: &[(i32, String)],
+    block_rows: &[(i32, String, Metadata)],
     storage_rows: &[(i32, String, String)],
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut to_insert_data = vec![];
@@ -279,11 +285,8 @@ async fn decode_credit(
                 if storage_row.0 == row.0 && storage_row.1 == hex::encode(key.clone()) {
                     let storage_key: String = storage_row.1.clone();
                     let storage_str: String = storage_row.2.clone();
-                    let storage_val = crate::common::decode_storage(
-                        &storage_key,
-                        &storage_str,
-                        deeper_metadata(),
-                    );
+                    let storage_val =
+                        crate::common::decode_storage(&storage_key, &storage_str, &row.2);
 
                     match storage_val {
                         Value::Composite(Composite::Named(data)) => {
@@ -331,7 +334,7 @@ async fn decode_credit(
 
 async fn decode_event(
     pool: &Pool<Postgres>,
-    block_rows: &[(i32, String)],
+    block_rows: &[(i32, String, Metadata)],
     storage_rows: &[(i32, String, String)],
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut to_insert_data: Vec<(i32, Value)> = vec![];
@@ -339,8 +342,7 @@ async fn decode_event(
     for row in block_rows {
         for storage_row in storage_rows {
             if storage_row.0 == row.0 && storage_row.1 == event_key {
-                let events =
-                    event_decoder::decode_event(&storage_row.1, &storage_row.2, deeper_metadata());
+                let events = event_decoder::decode_event(&storage_row.1, &storage_row.2, &row.2);
                 for event in &events {
                     to_insert_data.push((row.0, event.to_owned()));
                 }
@@ -373,7 +375,7 @@ async fn decode_event(
 
 async fn decode_delegation(
     pool: &Pool<Postgres>,
-    block_rows: &[(i32, String)],
+    block_rows: &[(i32, String, Metadata)],
     storage_rows: &[(i32, String, String)],
 ) -> Result<(), Box<dyn std::error::Error>> {
     for row in block_rows {
@@ -385,11 +387,8 @@ async fn decode_delegation(
                         == hex::encode(crate::common::staking_delegators_key(addr.clone()))
                 {
                     // TODO: handle null storage
-                    let validators = delegation_decoder::get_validators(
-                        &storage_row.1,
-                        &storage_row.2,
-                        deeper_metadata(),
-                    );
+                    let validators =
+                        delegation_decoder::get_validators(&storage_row.1, &storage_row.2, &row.2);
                     sqlx::query(
                         "insert into block_delegation(block_num, delegator, validators) values ($1, $2, $3)",
                     )

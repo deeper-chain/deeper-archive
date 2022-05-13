@@ -1450,6 +1450,7 @@ name = "deeper-decoder"
 version = "0.1.0"
 dependencies = [
  "async-std",
+ "desub",
  "desub-current",
  "hex",
  "parity-scale-codec",

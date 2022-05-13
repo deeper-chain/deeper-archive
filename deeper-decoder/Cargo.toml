@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 desub-current = { git = "https://github.com/deeper-chain/desub", branch = "polkadot-v0.9.17" }
+desub = { git = "https://github.com/deeper-chain/desub", branch = "polkadot-v0.9.17" }
 sp-runtime = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.17" }
 sp-core = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.17" }
 serde_json = { version = "1.0", features = ["arbitrary_precision"] }

@@ -5,6 +5,14 @@ use desub_current::Metadata;
 use sp_core::crypto::AccountId32;
 use sp_core::ByteArray;
 
+// static V14_METADATA_DEEPER_SCALE: &[u8] = include_bytes!("../data/v14_metadata_deeper.scale");
+
+// TODO: read metadata from database
+pub fn deeper_metadata() -> Metadata {
+    let meta = include_bytes!("../data/v14_metadata_deeper.scale");
+    Metadata::from_bytes(meta).expect("valid metadata")
+}
+
 pub fn decode_account_id(un: Vec<Value>) -> Result<AccountId32, Box<dyn std::error::Error>> {
     let mut account_id: Vec<u8> = vec![];
     for c in &un {
@@ -85,14 +93,14 @@ pub fn event_key() -> Vec<u8> {
     key
 }
 
-pub fn decode_storage(storage_key: &str, storage_val: &str, meta: Metadata) -> Value {
+pub fn decode_storage(storage_key: &str, storage_val: &str, meta: &Metadata) -> Value {
     let storage = decoder::decode_storage(&meta);
     let key_bytes = hex::decode(storage_key).unwrap();
     let entry = storage
-        .decode_key(&meta, &mut key_bytes.as_slice())
+        .decode_key(meta, &mut key_bytes.as_slice())
         .expect("can decode storage");
     decoder::decode_value_by_id(
-        &meta,
+        meta,
         &entry.ty,
         &mut hex::decode(&storage_val).unwrap().as_slice(),
     )
@@ -129,9 +137,9 @@ mod tests {
     fn test_decode_storage() {
         let storage_key = "83e0731810368fb22559f084ed61d427f7eb0b356c4455f32f2dab8a7aa408d83594ef778a4003043f6d977057644d65a88b59afe73f0e769e4f9d85cd40fd13f0874446f22d2ab6780f9cb89059307e";
         let storage_val = "01006400000000000000010000000000010e010000";
-        let meta = crate::deeper_metadata();
+        let meta = crate::common::deeper_metadata();
 
-        let val = decode_storage(storage_key, storage_val, meta);
+        let val = decode_storage(storage_key, storage_val, &meta);
         match val {
             Value::Composite(Composite::Named(data)) => {
                 let credit_val = data[1].1.clone();
@@ -145,11 +153,11 @@ mod tests {
     #[test]
     fn test_staking_delegation_key() {
         let test_addr =
-            AccountId32::from_ss58check("5FshJD1E8MuZw4U2sUWLQHeKuDmkQ85MZacBA36PEJj77xAZ")
+            AccountId32::from_ss58check("5DXga2eBuwuFykm9n6YdG2uCuK2ZqnNi1Py7hEzWPX3Cdtdz")
                 .unwrap();
         let key = staking_delegators_key(test_addr);
 
-        assert_eq!(hex::encode(key), "26aa394eea5630e07c48ae0c9558cef7b99d880ec681799c0cf30e8886371da93594ef778a4003043f6d977057644d65a88b59afe73f0e769e4f9d85cd40fd13f0874446f22d2ab6780f9cb89059307e");
+        assert_eq!(hex::encode(key), "5f3e4907f716ac89b6347d15ececedcae1c5df6d2773f08c7b6b1b6d0139c22ad8d95300d3869c73662575801e97110240cf86fde7072801dc43df9199deb195ebeec77b6831527344bff70b799ab555");
     }
 
     #[test]

@@ -3,43 +3,51 @@ use sp_core::crypto::AccountId32;
 use std::collections::HashSet;
 
 pub fn get_credit_changed_account_ids(ext: &str) -> HashSet<AccountId32> {
-    let extrinsics: Vec<crate::CurrentExtrinsic> = serde_json::from_str(ext).unwrap();
-
     let mut account_ids: HashSet<AccountId32> = HashSet::new();
-    for extrinsic in &extrinsics {
-        // TODO: check sudo
-        for argument in extrinsic.current.call_data.arguments.clone() {
-            match argument {
-                Value::Composite(Composite::Named(cn)) => {
-                    match cn[1].1.clone() {
-                        Value::Composite(Composite::Unnamed(cn1)) => {
-                            match cn1[0].clone() {
-                                Value::Composite(Composite::Named(cn2)) => {
-                                    if cn2[0].0 == "name"
-                                        && cn2[0].1
-                                            == Value::Primitive(value::Primitive::Str(
-                                                String::from("add_or_update_credit_data"),
-                                            ))
-                                    {
-                                        match cn2[1].1.clone() {
-                                            Value::Composite(Composite::Named(cn3)) => {
-                                                if cn3[0].0 == "account_id" {
-                                                    match cn3[0].1.clone() {
-                                                        Value::Composite(Composite::Unnamed(
-                                                            cn4,
-                                                        )) => match cn4[0].clone() {
-                                                            Value::Composite(
-                                                                Composite::Unnamed(cn5),
-                                                            ) => {
-                                                                match crate::common::decode_account_id(cn5) {
-                                                                  Ok(account) => {
-                                                                    account_ids.insert(account);
-                                                                  },
-                                                                  _ => {}, // ignore error
-                                                                }
+
+    match serde_json::from_str::<Vec<crate::CurrentExtrinsic>>(ext) {
+        Ok(extrinsics) => {
+            for extrinsic in &extrinsics {
+                // TODO: check sudo
+                if extrinsic.current.call_data.pallet_name == "Sudo" {
+                    if extrinsic.current.call_data.arguments.len() >= 1 {
+                        match extrinsic.current.call_data.arguments[0].clone() {
+                            Value::Composite(Composite::Named(cn)) => {
+                                match cn[1].1.clone() {
+                                    Value::Composite(Composite::Unnamed(cn1)) => {
+                                        match cn1[0].clone() {
+                                            Value::Composite(Composite::Named(cn2)) => {
+                                                if cn2[0].0 == "name"
+                                                    && cn2[0].1
+                                                        == Value::Primitive(value::Primitive::Str(
+                                                            String::from(
+                                                                "add_or_update_credit_data",
+                                                            ),
+                                                        ))
+                                                {
+                                                    match cn2[1].1.clone() {
+                                                        Value::Composite(Composite::Named(cn3)) => {
+                                                            if cn3[0].0 == "account_id" {
+                                                                match cn3[0].1.clone() {
+                                                                    Value::Composite(
+                                                                        Composite::Unnamed(cn4),
+                                                                    ) => match cn4[0].clone() {
+                                                                        Value::Composite(
+                                                                            Composite::Unnamed(cn5),
+                                                                        ) => {
+                                                                            match crate::common::decode_account_id(cn5) {
+                                                                    Ok(account) => {
+                                                                      account_ids.insert(account);
+                                                                    },
+                                                                    _ => {}, // ignore error
+                                                                  }
+                                                                        }
+                                                                        _ => {}
+                                                                    },
+                                                                    _ => {}
+                                                                };
                                                             }
-                                                            _ => {}
-                                                        },
+                                                        }
                                                         _ => {}
                                                     };
                                                 }
@@ -47,18 +55,21 @@ pub fn get_credit_changed_account_ids(ext: &str) -> HashSet<AccountId32> {
                                             _ => {}
                                         };
                                     }
-                                }
-                                _ => {}
-                            };
-                        }
-                        _ => {}
-                    };
+                                    _ => {}
+                                };
+                            }
+                            _ => {}
+                        };
+                    }
                 }
-                _ => {}
-            };
+                // for argument in extrinsic.current.call_data.arguments.clone() {
+
+                // }
+            }
+            account_ids
         }
+        Err(_) => account_ids,
     }
-    account_ids
 }
 
 #[cfg(test)]
